@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useStore } from '../store';
+import { useToast } from './Toast';
 import { Tariff, formatNumber, generateId } from '../types';
 import { Save, Edit, Trash2, Download, Upload } from 'lucide-react';
 
@@ -10,6 +11,7 @@ interface Props {
 
 export default function TariffsTab({ onStatus, darkMode = false }: Props) {
   const { state, dispatch } = useStore();
+  const toast = useToast();
 
   const [tariffType, setTariffType] = useState<'auto' | 'service'>('auto');
   const [category, setCategory] = useState('');
@@ -28,13 +30,13 @@ export default function TariffsTab({ onStatus, darkMode = false }: Props) {
   // Сохранение тарифа
   const handleSave = () => {
     if (!category.trim() || !carrier.trim() || !price.trim()) {
-      alert('Заполните все поля');
+      toast.warning('Заполните все поля');
       return;
     }
 
     const priceNum = parseFloat(price.replace(',', '.'));
     if (isNaN(priceNum) || priceNum <= 0) {
-      alert('Цена должна быть положительным числом');
+      toast.error('Цена должна быть положительным числом');
       return;
     }
 
@@ -49,6 +51,7 @@ export default function TariffsTab({ onStatus, darkMode = false }: Props) {
 
     dispatch({ type: 'ADD_TARIFF', payload: tariff });
     clearForm();
+    toast.success('Тариф сохранён');
   };
 
   // Редактирование
@@ -65,6 +68,7 @@ export default function TariffsTab({ onStatus, darkMode = false }: Props) {
   const handleDelete = (id: string) => {
     if (confirm('Удалить выбранный тариф?')) {
       dispatch({ type: 'DELETE_TARIFF', payload: id });
+      toast.success('Тариф удалён');
     }
   };
 
@@ -92,6 +96,7 @@ export default function TariffsTab({ onStatus, darkMode = false }: Props) {
     a.download = 'tariffs_export.json';
     a.click();
     URL.revokeObjectURL(url);
+    toast.success(`Экспортировано ${state.tariffs.length} тарифов`);
   };
 
   // Импорт тарифов
@@ -110,7 +115,7 @@ export default function TariffsTab({ onStatus, darkMode = false }: Props) {
         try {
           const data = JSON.parse(ev.target?.result as string);
           if (!Array.isArray(data)) {
-            alert('Неверный формат файла');
+            toast.error('Неверный формат файла');
             return;
           }
 
@@ -124,9 +129,9 @@ export default function TariffsTab({ onStatus, darkMode = false }: Props) {
           })).filter((t: Tariff) => t.category && t.carrier && t.price > 0);
 
           dispatch({ type: 'SET_TARIFFS', payload: tariffs });
-          alert(`Импортировано ${tariffs.length} тарифов`);
+          toast.success(`Импортировано ${tariffs.length} тарифов`);
         } catch (err) {
-          alert('Ошибка чтения файла');
+          toast.error('Ошибка чтения файла');
         }
       };
       reader.readAsText(file);

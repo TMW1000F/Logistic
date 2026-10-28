@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useStore } from '../store';
+import { useToast } from './Toast';
 import { CarRecord, calcDurationHours, calcAutoCost, formatNumber, formatDate, generateId } from '../types';
 import { Plus, Trash2, CheckSquare, Square } from 'lucide-react';
 import SearchAndTags, { FilterTag } from './SearchAndTags';
@@ -11,6 +12,7 @@ interface Props {
 
 export default function AutoTab({ onStatus, darkMode = false }: Props) {
   const { state, dispatch } = useStore();
+  const toast = useToast();
 
   // Форма ввода
   const [carNumber, setCarNumber] = useState('');
@@ -178,19 +180,19 @@ export default function AutoTab({ onStatus, darkMode = false }: Props) {
   // Сохранение
   const handleSave = () => {
     if (!carNumber.trim() || !carType || !carrier) {
-      alert('Заполните обязательные поля: номер ТС, тип ТС, перевозчик');
+      toast.warning('Заполните обязательные поля: номер ТС, тип ТС, перевозчик');
       return;
     }
 
     const tariff = getTariff(carType, carrier);
     if (tariff === null) {
-      alert(`Тариф для "${carType}" и "${carrier}" не найден. Добавьте тариф во вкладке "Тарифы".`);
+      toast.error(`Тариф для "${carType}" и "${carrier}" не найден. Добавьте тариф во вкладке "Тарифы".`);
       return;
     }
 
     const coef = useCoefficient ? parseFloat(coefficient.replace(',', '.')) : 1.0;
     if (isNaN(coef) || coef <= 0) {
-      alert('Некорректный коэффициент');
+      toast.error('Некорректный коэффициент');
       return;
     }
 
@@ -209,6 +211,7 @@ export default function AutoTab({ onStatus, darkMode = false }: Props) {
     dispatch({ type: 'ADD_AUTO_RECORD', payload: record });
     setCarNumber('');
     setUseCoefficient(false);
+    toast.success(`Автомобиль ${record.car_number} добавлен`);
     onStatus?.(`✅ Автомобиль ${record.car_number} добавлен`);
   };
 
@@ -217,6 +220,7 @@ export default function AutoTab({ onStatus, darkMode = false }: Props) {
     if (confirm('Удалить выбранную запись?')) {
       dispatch({ type: 'DELETE_AUTO_RECORD', payload: id });
       setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+      toast.success('Запись удалена');
       onStatus?.('🗑️ Запись удалена');
     }
   };
@@ -224,7 +228,7 @@ export default function AutoTab({ onStatus, darkMode = false }: Props) {
   // Удаление выбранных
   const handleDeleteSelected = () => {
     if (selectedIds.size === 0) {
-      alert('Выберите записи для удаления');
+      toast.warning('Выберите записи для удаления');
       return;
     }
     if (!confirm(`Удалить ${selectedIds.size} записей?`)) return;
@@ -232,8 +236,10 @@ export default function AutoTab({ onStatus, darkMode = false }: Props) {
     for (const id of selectedIds) {
       dispatch({ type: 'DELETE_AUTO_RECORD', payload: id });
     }
+    const count = selectedIds.size;
     setSelectedIds(new Set());
-    onStatus?.(`🗑️ Удалено записей: ${selectedIds.size}`);
+    toast.success(`Удалено записей: ${count}`);
+    onStatus?.(`🗑️ Удалено записей: ${count}`);
   };
 
   // Выбор всех / снять все

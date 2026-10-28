@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useStore } from '../store';
+import { useToast } from './Toast';
 import { ServiceRecord, calcServiceHours, calcServiceCost, formatNumber, formatDate, generateId } from '../types';
 import { Plus, Trash2, CheckSquare, Square } from 'lucide-react';
 import SearchAndTags, { FilterTag } from './SearchAndTags';
@@ -11,6 +12,7 @@ interface Props {
 
 export default function ServicesTab({ onStatus, darkMode = false }: Props) {
   const { state, dispatch } = useStore();
+  const toast = useToast();
 
   // Форма ввода
   const [serviceType, setServiceType] = useState('');
@@ -182,29 +184,29 @@ export default function ServicesTab({ onStatus, darkMode = false }: Props) {
   // Сохранение
   const handleSave = () => {
     if (!serviceType || !carrierInput) {
-      alert('Заполните обязательные поля: тип услуги, компания');
+      toast.warning('Заполните обязательные поля: тип услуги, компания');
       return;
     }
 
     const tariffInfo = getTariff(serviceType, carrierInput);
     if (!tariffInfo) {
-      alert(`Тариф для "${serviceType}" и "${carrierInput}" не найден.`);
+      toast.error(`Тариф для "${serviceType}" и "${carrierInput}" не найден.`);
       return;
     }
 
     if (tariffInfo.payment_type !== paymentType) {
-      alert(`Для этого тарифа ожидается ${tariffInfo.payment_type === 'hourly' ? 'почасовая' : 'фиксированная'} оплата`);
+      toast.error(`Для этого тарифа ожидается ${tariffInfo.payment_type === 'hourly' ? 'почасовая' : 'фиксированная'} оплата`);
       return;
     }
 
     if (quantity <= 0) {
-      alert('Количество должно быть больше 0');
+      toast.error('Количество должно быть больше 0');
       return;
     }
 
     const coef = useCoefficient ? parseFloat(coefficient.replace(',', '.')) : 1.0;
     if (isNaN(coef) || coef <= 0) {
-      alert('Некорректный коэффициент');
+      toast.error('Некорректный коэффициент');
       return;
     }
 
@@ -224,6 +226,7 @@ export default function ServicesTab({ onStatus, darkMode = false }: Props) {
     dispatch({ type: 'ADD_SERVICE_RECORD', payload: record });
     setQuantity(1);
     setUseCoefficient(false);
+    toast.success(`Услуга "${serviceType}" добавлена`);
     onStatus?.(`✅ Услуга "${serviceType}" добавлена`);
   };
 
@@ -232,13 +235,14 @@ export default function ServicesTab({ onStatus, darkMode = false }: Props) {
     if (confirm('Удалить выбранную запись?')) {
       dispatch({ type: 'DELETE_SERVICE_RECORD', payload: id });
       setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+      toast.success('Запись удалена');
       onStatus?.('🗑️ Запись удалена');
     }
   };
 
   const handleDeleteSelected = () => {
     if (selectedIds.size === 0) {
-      alert('Выберите записи для удаления');
+      toast.warning('Выберите записи для удаления');
       return;
     }
     if (!confirm(`Удалить ${selectedIds.size} записей?`)) return;
@@ -246,8 +250,10 @@ export default function ServicesTab({ onStatus, darkMode = false }: Props) {
     for (const id of selectedIds) {
       dispatch({ type: 'DELETE_SERVICE_RECORD', payload: id });
     }
+    const count = selectedIds.size;
     setSelectedIds(new Set());
-    onStatus?.(`🗑️ Удалено записей: ${selectedIds.size}`);
+    toast.success(`Удалено записей: ${count}`);
+    onStatus?.(`🗑️ Удалено записей: ${count}`);
   };
 
   const toggleSelectAll = () => {

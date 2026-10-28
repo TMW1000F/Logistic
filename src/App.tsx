@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { StoreProvider, useStore } from './store';
+import { ToastProvider, useToast } from './components/Toast';
 import AutoTab from './components/AutoTab';
 import ServicesTab from './components/ServicesTab';
 import ResultsTab from './components/ResultsTab';
@@ -14,6 +15,7 @@ const COMPANY_NAME = "АО «Логистик-Центр»";
 
 function AppContent() {
   const { state, dispatch } = useStore();
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showHelp, setShowHelp] = useState(false);
@@ -84,6 +86,7 @@ function AppContent() {
     a.download = `car_accounting_${dateStr}.json`;
     a.click();
     URL.revokeObjectURL(url);
+    toast.success(`Сохранено: авто — ${state.autoRecords.length}, услуг — ${state.serviceRecords.length}`);
     showStatus(`💾 Сохранено: авто — ${state.autoRecords.length}, услуг — ${state.serviceRecords.length}`);
   };
 
@@ -101,13 +104,14 @@ function AppContent() {
       try {
         const data = JSON.parse(ev.target?.result as string) as AppState;
         if (!data.autoRecords || !data.serviceRecords) {
-          alert('Неверный формат файла');
+          toast.error('Неверный формат файла');
           return;
         }
         dispatch({ type: 'IMPORT_DATA', payload: data });
+        toast.success(`Загружено: авто — ${data.autoRecords.length}, услуг — ${data.serviceRecords.length}`);
         showStatus(`📂 Загружено: авто — ${data.autoRecords.length}, услуг — ${data.serviceRecords.length}`);
       } catch (err) {
-        alert('Ошибка чтения файла: ' + (err as Error).message);
+        toast.error('Ошибка чтения файла: ' + (err as Error).message);
       }
     };
     reader.readAsText(file);
@@ -122,6 +126,7 @@ function AppContent() {
       return;
     }
     dispatch({ type: 'CLEAR_ALL' });
+    toast.info('Создан новый файл');
     showStatus('📄 Создан новый файл');
   };
 
@@ -305,7 +310,9 @@ function AppContent() {
 export default function App() {
   return (
     <StoreProvider>
-      <AppContent />
+      <ToastProvider>
+        <AppContent />
+      </ToastProvider>
     </StoreProvider>
   );
 }

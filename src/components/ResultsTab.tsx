@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useStore } from '../store';
+import { useToast } from './Toast';
 import { calcDurationHours, calcAutoCost, calcServiceHours, calcServiceCost, formatNumber, formatDate } from '../types';
 import * as XLSX from 'xlsx';
 
@@ -10,6 +11,7 @@ interface Props {
 
 export default function ResultsTab({ onStatus, darkMode = false }: Props) {
   const { state } = useStore();
+  const toast = useToast();
 
   const [mode, setMode] = useState<'auto_only' | 'all' | 'services_only'>('all');
   const [startDate, setStartDate] = useState('');
@@ -128,7 +130,7 @@ export default function ResultsTab({ onStatus, darkMode = false }: Props) {
   // Экспорт в Excel
   const exportToExcel = () => {
     if (!summaryData || summaryData.rows.length === 0) {
-      alert('Нет данных для сохранения');
+      toast.warning('Нет данных для сохранения');
       return;
     }
 
@@ -159,6 +161,7 @@ export default function ResultsTab({ onStatus, darkMode = false }: Props) {
     }
 
     XLSX.writeFile(wb, 'итоги.xlsx');
+    toast.success('Данные успешно экспортированы в Excel');
   };
 
   return (
