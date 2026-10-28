@@ -337,14 +337,14 @@ export default function ServicesTab({ onStatus, darkMode = false }: Props) {
             <span className="text-xs">—</span>
             <input type="date" value={dateRangeEnd} onChange={e => setDateRangeEnd(e.target.value)} disabled={!dateRangeEnabled} className={`border rounded px-1 py-1 text-xs w-32 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
           </div>
-          <button onClick={handleSave} onKeyDown={handleKeyDown} className="flex items-center gap-1 bg-green-600 text-white px-3 py-1.5 rounded text-sm hover:bg-green-700">
-            <Plus size={14} /> Добавить
-          </button>
           {selectedIds.size > 0 && (
             <button onClick={handleDeleteSelected} className="flex items-center gap-1 bg-red-600 text-white px-3 py-1.5 rounded text-sm hover:bg-red-700">
               <Trash2 size={14} /> Удалить ({selectedIds.size})
             </button>
           )}
+          <button onClick={handleSave} onKeyDown={handleKeyDown} className="ml-auto flex items-center gap-1 bg-green-600 text-white px-3 py-1.5 rounded text-sm hover:bg-green-700">
+            <Plus size={14} /> Добавить
+          </button>
           {serviceType && carrierInput && (
             <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
               {getTariff(serviceType, carrierInput) ? `Тариф: ${formatNumber(getTariff(serviceType, carrierInput)!.price)} ₽/${paymentType === 'hourly' ? 'час' : 'ед.'}` : '⚠️ Не найден'}
