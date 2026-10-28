@@ -231,7 +231,7 @@ export default function TariffsTab({ onStatus, darkMode = false }: Props) {
 
           {/* О программе */}
           <div className={`rounded p-3 text-xs ${darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-50 text-gray-600'}`}>
-            <p className="font-bold">Учёт автомобилей v1.9.6</p>
+            <p className="font-bold">Учёт автомобилей v2.0</p>
             <p>АО «Логистик-Центр»</p>
             <p>Шавлаков А.В., Норильск, 2025</p>
             <p className="mt-1">Записей: авто — {state.autoRecords.length}, услуг — {state.serviceRecords.length}</p>

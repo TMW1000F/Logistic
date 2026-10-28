@@ -10,7 +10,7 @@ import { AppState } from './types';
 import { Car, Wrench, BarChart3, DollarSign, TrendingUp, HelpCircle, Save, FolderOpen, FilePlus, Sun, Moon } from 'lucide-react';
 
 const APP_NAME = 'Учёт автомобилей';
-const VERSION = '1.9.6';
+const VERSION = '2.0';
 const COMPANY_NAME = "АО «Логистик-Центр»";
 
 function AppContent() {

@@ -14,8 +14,14 @@ export default function ResultsTab({ onStatus, darkMode = false }: Props) {
   const toast = useToast();
 
   const [mode, setMode] = useState<'auto_only' | 'all' | 'services_only'>('all');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [startDate, setStartDate] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-01-01`;
+  });
+  const [endDate, setEndDate] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-12-31`;
+  });
   const [selectedCarrier, setSelectedCarrier] = useState('');
 
   // Все перевозчики
@@ -241,8 +247,8 @@ export default function ResultsTab({ onStatus, darkMode = false }: Props) {
       )}
 
       {/* Сводная таблица */}
-      <div className={`rounded-lg overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white border border-gray-200'}`}>
-        <div className="overflow-x-auto">
+      <div className={`flex flex-col flex-1 min-h-0 rounded-lg overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white border border-gray-200'}`}>
+        <div className="flex-1 overflow-auto">
           {summaryData ? (
             <table className="w-full text-sm">
               <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-100'}>
