@@ -263,7 +263,7 @@ export default function AutoTab({ onStatus, darkMode = false }: Props) {
   return (
     <div className="flex flex-col h-full">
       {/* Sticky форма ввода */}
-      <div className={`flex-shrink-0 rounded-lg border p-3 mb-2 ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'}`}>
+      <div className={`flex-shrink-0 rounded-lg p-3 mb-2 ${darkMode ? 'bg-gray-800' : 'bg-white border border-gray-200'}`}>
         {/* Строка 1: Номер ТС, Тип ТС, Перевозчик, Дата */}
         <div className="grid grid-cols-4 gap-2 mb-2">
           <div>
@@ -395,7 +395,7 @@ export default function AutoTab({ onStatus, darkMode = false }: Props) {
       </div>
 
       {/* Контейнер: поиск + таблица + итоги (занимает всё оставшееся место) */}
-      <div className={`flex flex-col flex-1 min-h-0 rounded-lg border overflow-hidden ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'}`}>
+      <div className={`flex flex-col flex-1 min-h-0 rounded-lg overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white border border-gray-200'}`}>
         {/* Поиск и теги — закреплено сверху, не прокручивается */}
         <div className={`flex-shrink-0 border-b p-3 ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
           <SearchAndTags
