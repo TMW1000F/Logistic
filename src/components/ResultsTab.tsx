@@ -164,18 +164,18 @@ export default function ResultsTab({ onStatus, darkMode = false }: Props) {
   return (
     <div className="space-y-4">
       {/* Режим отображения */}
-      <div className="bg-white rounded-lg border p-4">
-        <h3 className="font-bold text-sm text-gray-700 mb-3">📊 Режим отображения</h3>
+      <div className={`rounded-lg border p-4 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+        <h3 className={`font-bold text-sm mb-3 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>📊 Режим отображения</h3>
         <div className="flex flex-wrap gap-4">
-          <label className="flex items-center gap-1 text-sm">
+          <label className={`flex items-center gap-1 text-sm ${darkMode ? 'text-gray-300' : ''}`}>
             <input type="radio" checked={mode === 'auto_only'} onChange={() => setMode('auto_only')} />
             Без доп. услуг
           </label>
-          <label className="flex items-center gap-1 text-sm">
+          <label className={`flex items-center gap-1 text-sm ${darkMode ? 'text-gray-300' : ''}`}>
             <input type="radio" checked={mode === 'all'} onChange={() => setMode('all')} />
             С доп. услугами
           </label>
-          <label className="flex items-center gap-1 text-sm">
+          <label className={`flex items-center gap-1 text-sm ${darkMode ? 'text-gray-300' : ''}`}>
             <input type="radio" checked={mode === 'services_only'} onChange={() => setMode('services_only')} />
             Только доп. услуги
           </label>
@@ -183,19 +183,19 @@ export default function ResultsTab({ onStatus, darkMode = false }: Props) {
       </div>
 
       {/* Фильтры */}
-      <div className="bg-white rounded-lg border p-4">
+      <div className={`rounded-lg border p-4 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-600">Начальная дата:</label>
-            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border rounded px-2 py-1 text-sm" />
+            <label className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Начальная дата:</label>
+            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className={`border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-600">Конечная дата:</label>
-            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border rounded px-2 py-1 text-sm" />
+            <label className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Конечная дата:</label>
+            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className={`border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-600">Перевозчик:</label>
-            <select value={selectedCarrier} onChange={e => setSelectedCarrier(e.target.value)} className="border rounded px-2 py-1 text-sm">
+            <label className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Перевозчик:</label>
+            <select value={selectedCarrier} onChange={e => setSelectedCarrier(e.target.value)} className={`border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
               <option value="">Все</option>
               {allCarriers.filter(c => c).map(c => <option key={c} value={c}>{c}</option>)}
             </select>
@@ -208,22 +208,22 @@ export default function ResultsTab({ onStatus, darkMode = false }: Props) {
 
       {/* Статистика по типам услуг */}
       {serviceTypeStats.length > 0 && (
-        <div className="bg-white rounded-lg border p-4">
-          <h3 className="font-bold text-sm text-gray-700 mb-3">📈 Статистика по типам услуг</h3>
+        <div className={`rounded-lg border p-4 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+          <h3 className={`font-bold text-sm mb-3 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>📈 Статистика по типам услуг</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-100">
+              <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-100'}>
                 <tr>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Тип услуги</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-600">Кол-во заказов</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-600">Единиц</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-600">Часы</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-600">Стоимость</th>
+                  <th className={`px-3 py-2 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Тип услуги</th>
+                  <th className={`px-3 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Кол-во заказов</th>
+                  <th className={`px-3 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Единиц</th>
+                  <th className={`px-3 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Часы</th>
+                  <th className={`px-3 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Стоимость</th>
                 </tr>
               </thead>
               <tbody>
                 {serviceTypeStats.map((s, idx) => (
-                  <tr key={idx} className="border-t">
+                  <tr key={idx} className={`border-t ${darkMode ? 'border-gray-700 hover:bg-gray-700' : 'hover:bg-gray-50'}`}>
                     <td className="px-3 py-1.5">{s.type}</td>
                     <td className="px-3 py-1.5 text-right">{s.orders}</td>
                     <td className="px-3 py-1.5 text-right">{formatNumber(s.units)}</td>
@@ -238,27 +238,27 @@ export default function ResultsTab({ onStatus, darkMode = false }: Props) {
       )}
 
       {/* Сводная таблица */}
-      <div className="bg-white rounded-lg border overflow-hidden">
+      <div className={`rounded-lg border overflow-hidden ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
         <div className="overflow-x-auto">
           {summaryData ? (
             <table className="w-full text-sm">
-              <thead className="bg-gray-100">
+              <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-100'}>
                 <tr>
-                  <th className="px-2 py-2 text-left text-xs font-medium text-gray-600 sticky left-0 bg-gray-100">Дата</th>
+                  <th className={`px-2 py-2 text-left text-xs font-medium sticky left-0 z-10 ${darkMode ? 'text-gray-300 bg-gray-700' : 'text-gray-600 bg-gray-100'}`}>Дата</th>
                   {summaryData.sortedTypes.map((type, idx) => (
-                    <th key={idx} colSpan={3} className="px-2 py-1 text-center text-xs font-medium text-gray-600 border-l">{type}</th>
+                    <th key={idx} colSpan={3} className={`px-2 py-1 text-center text-xs font-medium border-l ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{type}</th>
                   ))}
-                  <th className="px-2 py-2 text-right text-xs font-medium text-gray-600 border-l">Всего ТС</th>
-                  <th className="px-2 py-2 text-right text-xs font-medium text-gray-600">Всего часов</th>
-                  <th className="px-2 py-2 text-right text-xs font-medium text-gray-600">Всего стоимость</th>
+                  <th className={`px-2 py-2 text-right text-xs font-medium border-l ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Всего ТС</th>
+                  <th className={`px-2 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Всего часов</th>
+                  <th className={`px-2 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Всего стоимость</th>
                 </tr>
-                <tr className="bg-gray-50">
-                  <th className="px-2 py-1 sticky left-0 bg-gray-50"></th>
+                <tr className={darkMode ? 'bg-gray-700/50' : 'bg-gray-50'}>
+                  <th className={`px-2 py-1 sticky left-0 z-10 ${darkMode ? 'bg-gray-700/50' : 'bg-gray-50'}`}></th>
                   {summaryData.sortedTypes.map((_, idx) => (
                     <React.Fragment key={idx}>
-                      <th className="px-1 py-1 text-xs text-gray-500 border-l">Кол-во</th>
-                      <th className="px-1 py-1 text-xs text-gray-500">Часы</th>
-                      <th className="px-1 py-1 text-xs text-gray-500">Стоим.</th>
+                      <th className={`px-1 py-1 text-xs border-l ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Кол-во</th>
+                      <th className={`px-1 py-1 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Часы</th>
+                      <th className={`px-1 py-1 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Стоим.</th>
                     </React.Fragment>
                   ))}
                   <th className="px-2 py-1 border-l"></th>
@@ -268,8 +268,8 @@ export default function ResultsTab({ onStatus, darkMode = false }: Props) {
               </thead>
               <tbody>
                 {summaryData.rows.map((row, idx) => (
-                  <tr key={idx} className="border-t hover:bg-gray-50">
-                    <td className="px-2 py-1.5 sticky left-0 bg-white">{formatDate(row.date)}</td>
+                  <tr key={idx} className={`border-t ${darkMode ? 'border-gray-700 hover:bg-gray-700' : 'hover:bg-gray-50'}`}>
+                    <td className={`px-2 py-1.5 sticky left-0 z-10 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>{formatDate(row.date)}</td>
                     {summaryData.sortedTypes.map((type, tIdx) => {
                       const td = row.typeData[type] || { count: 0, time: 0, cost: 0 };
                       return (
@@ -288,13 +288,13 @@ export default function ResultsTab({ onStatus, darkMode = false }: Props) {
               </tbody>
             </table>
           ) : (
-            <div className="px-4 py-8 text-center text-gray-400">Выберите даты для отображения итогов</div>
+            <div className={`px-4 py-8 text-center ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Выберите даты для отображения итогов</div>
           )}
         </div>
 
         {/* Общие итоги */}
         {summaryData && (
-          <div className="border-t bg-gray-50 px-4 py-3">
+          <div className={`border-t px-4 py-3 ${darkMode ? 'border-gray-700 bg-gray-700/50' : 'border-gray-200 bg-gray-50'}`}>
             <p className="text-sm font-bold text-red-600">
               Всего за период: {summaryData.totalAllCount} записей, время {formatNumber(summaryData.totalAllTime)} ч, сумма {formatNumber(summaryData.totalAllCost)} ₽
             </p>

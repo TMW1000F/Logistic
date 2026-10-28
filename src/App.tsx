@@ -213,7 +213,7 @@ function AppContent() {
       </header>
 
       {/* Вкладки */}
-      <nav className="bg-white border-b shadow-sm flex-shrink-0">
+      <nav className={`border-b shadow-sm flex-shrink-0 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
         <div className="max-w-full mx-auto px-4">
           <div className="flex overflow-x-auto">
             {tabs.map((tab, idx) => {
@@ -224,8 +224,8 @@ function AppContent() {
                   onClick={() => setActiveTab(idx)}
                   className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition whitespace-nowrap ${
                     activeTab === idx
-                      ? 'border-blue-600 text-blue-600 bg-blue-50'
-                      : 'border-transparent text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+                      ? (darkMode ? 'border-blue-400 text-blue-400 bg-gray-700' : 'border-blue-600 text-blue-600 bg-blue-50')
+                      : (darkMode ? 'border-transparent text-gray-400 hover:text-gray-200 hover:bg-gray-700' : 'border-transparent text-gray-600 hover:text-gray-800 hover:bg-gray-50')
                   }`}
                 >
                   <Icon size={16} />
@@ -251,24 +251,24 @@ function AppContent() {
       {/* Модальное окно справки */}
       {showHelp && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowHelp(false)}>
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6" onClick={e => e.stopPropagation()}>
+          <div className={`rounded-lg shadow-xl max-w-md w-full mx-4 p-6 ${darkMode ? 'bg-gray-800 text-gray-100' : 'bg-white text-gray-900'}`} onClick={e => e.stopPropagation()}>
             <h2 className="text-lg font-bold mb-4">📖 Справка</h2>
             <div className="space-y-3 text-sm">
               <p className="font-bold">{APP_NAME} v{VERSION}</p>
-              <p className="text-gray-600">{COMPANY_NAME}</p>
+              <p className={darkMode ? 'text-gray-400' : 'text-gray-600'}>{COMPANY_NAME}</p>
               
-              <div className="bg-gray-50 rounded p-3">
+              <div className={`rounded p-3 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
                 <p className="font-medium mb-2">Горячие клавиши:</p>
                 <ul className="space-y-1 text-xs">
-                  <li><kbd className="bg-gray-200 px-1 rounded">F1</kbd> — эта справка</li>
-                  <li><kbd className="bg-gray-200 px-1 rounded">Ctrl+S</kbd> — сохранить в файл</li>
-                  <li><kbd className="bg-gray-200 px-1 rounded">Ctrl+O</kbd> — загрузить из файла</li>
-                  <li><kbd className="bg-gray-200 px-1 rounded">Ctrl+N</kbd> — новый файл</li>
-                  <li><kbd className="bg-gray-200 px-1 rounded">Enter</kbd> — добавить запись</li>
+                  <li><kbd className={`px-1 rounded ${darkMode ? 'bg-gray-600 text-gray-200' : 'bg-gray-200'}`}>F1</kbd> — эта справка</li>
+                  <li><kbd className={`px-1 rounded ${darkMode ? 'bg-gray-600 text-gray-200' : 'bg-gray-200'}`}>Ctrl+S</kbd> — сохранить в файл</li>
+                  <li><kbd className={`px-1 rounded ${darkMode ? 'bg-gray-600 text-gray-200' : 'bg-gray-200'}`}>Ctrl+O</kbd> — загрузить из файла</li>
+                  <li><kbd className={`px-1 rounded ${darkMode ? 'bg-gray-600 text-gray-200' : 'bg-gray-200'}`}>Ctrl+N</kbd> — новый файл</li>
+                  <li><kbd className={`px-1 rounded ${darkMode ? 'bg-gray-600 text-gray-200' : 'bg-gray-200'}`}>Enter</kbd> — добавить запись</li>
                 </ul>
               </div>
 
-              <div className="bg-blue-50 rounded p-3">
+              <div className={`rounded p-3 ${darkMode ? 'bg-blue-900/30' : 'bg-blue-50'}`}>
                 <p className="font-medium mb-2">Как начать работу:</p>
                 <ol className="space-y-1 text-xs list-decimal list-inside">
                   <li>Перейдите во вкладку «Тарифы»</li>
@@ -278,7 +278,7 @@ function AppContent() {
                 </ol>
               </div>
 
-              <div className="bg-green-50 rounded p-3">
+              <div className={`rounded p-3 ${darkMode ? 'bg-green-900/30' : 'bg-green-50'}`}>
                 <p className="font-medium mb-2">💡 Подсказки:</p>
                 <ul className="space-y-1 text-xs list-disc list-inside">
                   <li>Кликните по значению в таблице, чтобы добавить фильтр</li>
@@ -288,7 +288,7 @@ function AppContent() {
                 </ul>
               </div>
 
-              <p className="text-xs text-gray-400 mt-4">
+              <p className={`text-xs mt-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                 Разработчик: Шавлаков А.В.<br />
                 Норильск, 2025
               </p>

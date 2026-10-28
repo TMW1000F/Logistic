@@ -94,20 +94,20 @@ export default function StatsTab({ onStatus, darkMode = false }: Props) {
   return (
     <div className="space-y-4">
       {/* Фильтры */}
-      <div className="bg-white rounded-lg border p-4">
-        <h3 className="font-bold text-sm text-gray-700 mb-3">📅 Период статистики</h3>
+      <div className={`rounded-lg border p-4 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+        <h3 className={`font-bold text-sm mb-3 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>📅 Период статистики</h3>
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-600">Начальная дата:</label>
-            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border rounded px-2 py-1 text-sm" />
+            <label className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Начальная дата:</label>
+            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className={`border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-600">Конечная дата:</label>
-            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border rounded px-2 py-1 text-sm" />
+            <label className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Конечная дата:</label>
+            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className={`border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-600">Перевозчик:</label>
-            <select value={selectedCarrier} onChange={e => setSelectedCarrier(e.target.value)} className="border rounded px-2 py-1 text-sm">
+            <label className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Перевозчик:</label>
+            <select value={selectedCarrier} onChange={e => setSelectedCarrier(e.target.value)} className={`border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
               {availableCarriers.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
@@ -116,34 +116,34 @@ export default function StatsTab({ onStatus, darkMode = false }: Props) {
 
       {/* Карточки статистики */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard title="Всего записей" value={stats.totalCount.toString()} color="blue" />
-        <StatCard title="Автомобили" value={stats.autoCount.toString()} color="green" />
-        <StatCard title="Услуги" value={stats.serviceCount.toString()} color="purple" />
-        <StatCard title="Общее время (ч)" value={formatNumber(stats.totalHours)} color="orange" />
+        <StatCard title="Всего записей" value={stats.totalCount.toString()} color="blue" darkMode={darkMode} />
+        <StatCard title="Автомобили" value={stats.autoCount.toString()} color="green" darkMode={darkMode} />
+        <StatCard title="Услуги" value={stats.serviceCount.toString()} color="purple" darkMode={darkMode} />
+        <StatCard title="Общее время (ч)" value={formatNumber(stats.totalHours)} color="orange" darkMode={darkMode} />
       </div>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <StatCard title="Общая стоимость" value={`${formatNumber(stats.totalCost)} ₽`} color="red" />
-        <StatCard title="Стоимость авто" value={`${formatNumber(stats.autoCost)} ₽`} color="green" />
-        <StatCard title="Стоимость услуг" value={`${formatNumber(stats.serviceCost)} ₽`} color="purple" />
+        <StatCard title="Общая стоимость" value={`${formatNumber(stats.totalCost)} ₽`} color="red" darkMode={darkMode} />
+        <StatCard title="Стоимость авто" value={`${formatNumber(stats.autoCost)} ₽`} color="green" darkMode={darkMode} />
+        <StatCard title="Стоимость услуг" value={`${formatNumber(stats.serviceCost)} ₽`} color="purple" darkMode={darkMode} />
       </div>
 
       {/* Таблица по типам автомобилей */}
-      <div className="bg-white rounded-lg border p-4">
-        <h3 className="font-bold text-sm text-gray-700 mb-3">🚗 Статистика по типам автомобилей</h3>
+      <div className={`rounded-lg border p-4 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+        <h3 className={`font-bold text-sm mb-3 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>🚗 Статистика по типам автомобилей</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-100">
+            <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-100'}>
               <tr>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Тип ТС</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-gray-600">Кол-во рейсов</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-gray-600">Часы</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-gray-600">Стоимость</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-gray-600">Средняя стоимость</th>
+                <th className={`px-3 py-2 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Тип ТС</th>
+                <th className={`px-3 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Кол-во рейсов</th>
+                <th className={`px-3 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Часы</th>
+                <th className={`px-3 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Стоимость</th>
+                <th className={`px-3 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Средняя стоимость</th>
               </tr>
             </thead>
             <tbody>
               {autoStats.map((s, idx) => (
-                <tr key={idx} className="border-t hover:bg-gray-50">
+                <tr key={idx} className={`border-t ${darkMode ? 'border-gray-700 hover:bg-gray-700' : 'hover:bg-gray-50'}`}>
                   <td className="px-3 py-1.5">{s.type}</td>
                   <td className="px-3 py-1.5 text-right">{s.count}</td>
                   <td className="px-3 py-1.5 text-right">{formatNumber(s.hours)}</td>
@@ -153,7 +153,7 @@ export default function StatsTab({ onStatus, darkMode = false }: Props) {
               ))}
               {autoStats.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-4 text-center text-gray-400">Нет данных</td>
+                  <td colSpan={5} className={`px-4 py-4 text-center ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Нет данных</td>
                 </tr>
               )}
             </tbody>
@@ -162,22 +162,22 @@ export default function StatsTab({ onStatus, darkMode = false }: Props) {
       </div>
 
       {/* Таблица по типам услуг */}
-      <div className="bg-white rounded-lg border p-4">
-        <h3 className="font-bold text-sm text-gray-700 mb-3">🔧 Статистика по типам услуг</h3>
+      <div className={`rounded-lg border p-4 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+        <h3 className={`font-bold text-sm mb-3 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>🔧 Статистика по типам услуг</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-100">
+            <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-100'}>
               <tr>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Тип услуги</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-gray-600">Кол-во заказов</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-gray-600">Всего единиц</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-gray-600">Всего часов</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-gray-600">Общая стоимость</th>
+                <th className={`px-3 py-2 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Тип услуги</th>
+                <th className={`px-3 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Кол-во заказов</th>
+                <th className={`px-3 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Всего единиц</th>
+                <th className={`px-3 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Всего часов</th>
+                <th className={`px-3 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Общая стоимость</th>
               </tr>
             </thead>
             <tbody>
               {serviceStats.map((s, idx) => (
-                <tr key={idx} className="border-t hover:bg-gray-50">
+                <tr key={idx} className={`border-t ${darkMode ? 'border-gray-700 hover:bg-gray-700' : 'hover:bg-gray-50'}`}>
                   <td className="px-3 py-1.5">{s.type}</td>
                   <td className="px-3 py-1.5 text-right">{s.count}</td>
                   <td className="px-3 py-1.5 text-right">{formatNumber(s.totalQuantity)}</td>
@@ -187,7 +187,7 @@ export default function StatsTab({ onStatus, darkMode = false }: Props) {
               ))}
               {serviceStats.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-4 text-center text-gray-400">Нет данных</td>
+                  <td colSpan={5} className={`px-4 py-4 text-center ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Нет данных</td>
                 </tr>
               )}
             </tbody>
@@ -198,8 +198,8 @@ export default function StatsTab({ onStatus, darkMode = false }: Props) {
   );
 }
 
-function StatCard({ title, value, color }: { title: string; value: string; color: string }) {
-  const colorClasses: Record<string, string> = {
+function StatCard({ title, value, color, darkMode = false }: { title: string; value: string; color: string; darkMode?: boolean }) {
+  const lightColorClasses: Record<string, string> = {
     blue: 'border-blue-200 bg-blue-50',
     green: 'border-green-200 bg-green-50',
     purple: 'border-purple-200 bg-purple-50',
@@ -207,7 +207,15 @@ function StatCard({ title, value, color }: { title: string; value: string; color
     red: 'border-red-200 bg-red-50',
   };
 
-  const textColors: Record<string, string> = {
+  const darkColorClasses: Record<string, string> = {
+    blue: 'border-blue-800 bg-blue-900/30',
+    green: 'border-green-800 bg-green-900/30',
+    purple: 'border-purple-800 bg-purple-900/30',
+    orange: 'border-orange-800 bg-orange-900/30',
+    red: 'border-red-800 bg-red-900/30',
+  };
+
+  const lightTextColors: Record<string, string> = {
     blue: 'text-blue-700',
     green: 'text-green-700',
     purple: 'text-purple-700',
@@ -215,10 +223,18 @@ function StatCard({ title, value, color }: { title: string; value: string; color
     red: 'text-red-700',
   };
 
+  const darkTextColors: Record<string, string> = {
+    blue: 'text-blue-300',
+    green: 'text-green-300',
+    purple: 'text-purple-300',
+    orange: 'text-orange-300',
+    red: 'text-red-300',
+  };
+
   return (
-    <div className={`rounded-lg border p-3 ${colorClasses[color] || colorClasses.blue}`}>
-      <p className="text-xs text-gray-600">{title}</p>
-      <p className={`text-lg font-bold ${textColors[color] || textColors.blue}`}>{value}</p>
+    <div className={`rounded-lg border p-3 ${darkMode ? (darkColorClasses[color] || darkColorClasses.blue) : (lightColorClasses[color] || lightColorClasses.blue)}`}>
+      <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{title}</p>
+      <p className={`text-lg font-bold ${darkMode ? (darkTextColors[color] || darkTextColors.blue) : (lightTextColors[color] || lightTextColors.blue)}`}>{value}</p>
     </div>
   );
 }
