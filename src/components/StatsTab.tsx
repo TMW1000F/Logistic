@@ -92,7 +92,7 @@ export default function StatsTab({ onStatus, darkMode = false }: Props) {
   }, [filteredServices]);
 
   return (
-    <div className="space-y-4">
+    <div className="h-full overflow-auto space-y-4">
       {/* Фильтры */}
       <div className={`rounded-lg p-4 ${darkMode ? 'bg-gray-800' : 'bg-white border border-gray-200'}`}>
         <h3 className={`font-bold text-sm mb-3 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>📅 Период статистики</h3>

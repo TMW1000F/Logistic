@@ -140,7 +140,7 @@ export default function TariffsTab({ onStatus, darkMode = false }: Props) {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="h-full overflow-auto space-y-4">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Левая часть - форма */}
         <div className={`rounded-lg p-4 space-y-4 ${darkMode ? 'bg-gray-800' : 'bg-white border border-gray-200'}`}>
