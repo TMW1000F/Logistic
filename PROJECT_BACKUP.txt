@@ -1,0 +1,922 @@
+================================================================================
+                    ПРОЕКТ: УЧЁТ АВТОМОБИЛЕЙ v2.0
+                    Текстовый архив проекта
+================================================================================
+
+ИНСТРУКЦИЯ ПО ВОССТАНОВЛЕНИЮ ПРОЕКТА:
+
+1. Создайте папку проекта (например: car-accounting)
+2. Создайте в ней все файлы, указанные ниже
+3. Скопируйте содержимое каждого файла между маркерами
+   === НАЧАЛО ФАЙЛА: [имя] === и === КОНЕЦ ФАЙЛА: [имя] ===
+4. Установите зависимости: npm install
+5. Запустите проект: npm run dev
+
+================================================================================
+=== НАЧАЛО ФАЙЛА: package.json ===
+{
+  "name": "car-accounting",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "lucide-react": "^0.294.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.2.2",
+    "vite": "^5.0.8"
+  }
+}
+=== КОНЕЦ ФАЙЛА: package.json ===
+
+================================================================================
+=== НАЧАЛО ФАЙЛА: index.html ===
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Учёт автомобилей — АО 'Логистик-Центр'</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+=== КОНЕЦ ФАЙЛА: index.html ===
+
+================================================================================
+=== НАЧАЛО ФАЙЛА: vite.config.js ===
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import tailwindcss from 'tailwindcss'
+import autoprefixer from 'autoprefixer'
+
+export default defineConfig({
+  plugins: [react()],
+  css: {
+    postcss: {
+      plugins: [tailwindcss(), autoprefixer()],
+    },
+  },
+})
+=== КОНЕЦ ФАЙЛА: vite.config.js ===
+
+================================================================================
+=== НАЧАЛО ФАЙЛА: tailwind.config.js ===
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  darkMode: 'class',
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}
+=== КОНЕЦ ФАЙЛА: tailwind.config.js ===
+
+================================================================================
+=== НАЧАЛО ФАЙЛА: postcss.config.js ===
+export default {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}
+=== КОНЕЦ ФАЙЛА: postcss.config.js ===
+
+================================================================================
+=== НАЧАЛО ФАЙЛА: tsconfig.json ===
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src"],
+  "references": [{ "path": "./tsconfig.node.json" }]
+}
+=== КОНЕЦ ФАЙЛА: tsconfig.json ===
+
+================================================================================
+=== НАЧАЛО ФАЙЛА: tsconfig.node.json ===
+{
+  "compilerOptions": {
+    "composite": true,
+    "skipLibCheck": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true
+  },
+  "include": ["vite.config.js"]
+}
+=== КОНЕЦ ФАЙЛА: tsconfig.node.json ===
+
+================================================================================
+=== НАЧАЛО ФАЙЛА: .gitignore ===
+node_modules/
+dist/
+.env
+.env.local
+*.log
+.DS_Store
+Thumbs.db
+=== КОНЕЦ ФАЙЛА: .gitignore ===
+
+================================================================================
+=== НАЧАЛО ФАЙЛА: src/main.tsx ===
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './App.tsx'
+import './index.css'
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+)
+=== КОНЕЦ ФАЙЛА: src/main.tsx ===
+
+================================================================================
+=== НАЧАЛО ФАЙЛА: src/index.css ===
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  overflow: hidden;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease-out;
+}
+=== КОНЕЦ ФАЙЛА: src/index.css ===
+
+================================================================================
+=== НАЧАЛО ФАЙЛА: src/types.ts ===
+// ==================== Типы данных ====================
+
+export interface CarRecord {
+  id: string;
+  car_number: string;
+  car_type: string;
+  carrier: string;
+  arrival: string; // HH:MM
+  departure: string; // HH:MM
+  date: string; // YYYY-MM-DD
+  tariff: number;
+  coefficient: number;
+}
+
+export interface ServiceRecord {
+  id: string;
+  service_type: string;
+  carrier: string;
+  quantity: number;
+  payment_type: 'hourly' | 'fixed';
+  arrival: string | null; // HH:MM
+  departure: string | null; // HH:MM
+  date: string; // YYYY-MM-DD
+  tariff: number;
+  coefficient: number;
+}
+
+export interface Tariff {
+  id: string;
+  type: 'auto' | 'service';
+  category: string;
+  carrier: string;
+  price: number;
+  payment_type: 'hourly' | 'fixed';
+}
+
+export interface AppState {
+  autoRecords: CarRecord[];
+  serviceRecords: ServiceRecord[];
+  tariffs: Tariff[];
+}
+
+// ==================== Утилиты расчёта ====================
+
+export function calcDurationHours(arrival: string, departure: string): number {
+  const [ah, am] = arrival.split(':').map(Number);
+  const [dh, dm] = departure.split(':').map(Number);
+  const startMinutes = ah * 60 + am;
+  const endMinutes = dh * 60 + dm;
+  let diff = endMinutes - startMinutes;
+  if (diff < 0) diff += 24 * 60; // переход через полночь
+  return Math.round((diff / 60) * 100) / 100;
+}
+
+export function calcAutoCost(record: CarRecord): number {
+  const hours = calcDurationHours(record.arrival, record.departure);
+  return Math.round(hours * record.tariff * record.coefficient * 100) / 100;
+}
+
+export function calcServiceHours(record: ServiceRecord): number {
+  if (record.payment_type === 'hourly' && record.arrival && record.departure) {
+    return calcDurationHours(record.arrival, record.departure);
+  }
+  return 0;
+}
+
+export function calcServiceCost(record: ServiceRecord): number {
+  if (record.payment_type === 'hourly') {
+    const hours = calcServiceHours(record);
+    return Math.round(hours * record.tariff * record.quantity * record.coefficient * 100) / 100;
+  } else {
+    return Math.round(record.tariff * record.quantity * record.coefficient * 100) / 100;
+  }
+}
+
+export function formatNumber(num: number): string {
+  return num.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+export function formatDate(dateStr: string): string {
+  if (!dateStr) return '';
+  const [y, m, d] = dateStr.split('-');
+  return `${d}.${m}.${y}`;
+}
+
+export function generateId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+}
+=== КОНЕЦ ФАЙЛА: src/types.ts ===
+
+================================================================================
+=== НАЧАЛО ФАЙЛА: src/store.tsx ===
+import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
+import { AppState, CarRecord, ServiceRecord, Tariff } from './types';
+
+// ==================== Начальное состояние ====================
+const initialState: AppState = {
+  autoRecords: [],
+  serviceRecords: [],
+  tariffs: [],
+};
+
+// ==================== Действия ====================
+type Action =
+  | { type: 'LOAD_STATE'; payload: AppState }
+  | { type: 'ADD_AUTO_RECORD'; payload: CarRecord }
+  | { type: 'DELETE_AUTO_RECORD'; payload: string }
+  | { type: 'ADD_SERVICE_RECORD'; payload: ServiceRecord }
+  | { type: 'DELETE_SERVICE_RECORD'; payload: string }
+  | { type: 'ADD_TARIFF'; payload: Tariff }
+  | { type: 'DELETE_TARIFF'; payload: string }
+  | { type: 'SET_TARIFFS'; payload: Tariff[] }
+  | { type: 'CLEAR_ALL' }
+  | { type: 'IMPORT_DATA'; payload: AppState };
+
+function reducer(state: AppState, action: Action): AppState {
+  switch (action.type) {
+    case 'LOAD_STATE':
+      return action.payload;
+    case 'ADD_AUTO_RECORD':
+      return { ...state, autoRecords: [...state.autoRecords, action.payload] };
+    case 'DELETE_AUTO_RECORD':
+      return { ...state, autoRecords: state.autoRecords.filter(r => r.id !== action.payload) };
+    case 'ADD_SERVICE_RECORD':
+      return { ...state, serviceRecords: [...state.serviceRecords, action.payload] };
+    case 'DELETE_SERVICE_RECORD':
+      return { ...state, serviceRecords: state.serviceRecords.filter(r => r.id !== action.payload) };
+    case 'ADD_TARIFF': {
+      const filtered = state.tariffs.filter(
+        t => !(t.type === action.payload.type && t.category === action.payload.category && t.carrier === action.payload.carrier)
+      );
+      return { ...state, tariffs: [...filtered, action.payload] };
+    }
+    case 'DELETE_TARIFF':
+      return { ...state, tariffs: state.tariffs.filter(t => t.id !== action.payload) };
+    case 'SET_TARIFFS':
+      return { ...state, tariffs: action.payload };
+    case 'CLEAR_ALL':
+      return { ...state, autoRecords: [], serviceRecords: [] };
+    case 'IMPORT_DATA':
+      return action.payload;
+    default:
+      return state;
+  }
+}
+
+// ==================== Контекст ====================
+interface StoreContextType {
+  state: AppState;
+  dispatch: React.Dispatch<Action>;
+}
+
+const StoreContext = createContext<StoreContextType | null>(null);
+
+export function StoreProvider({ children }: { children: ReactNode }) {
+  const [state, dispatch] = useReducer(reducer, initialState);
+
+  // Загрузка из localStorage при старте
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('car_accounting_data');
+      if (saved) {
+        const parsed = JSON.parse(saved) as AppState;
+        dispatch({ type: 'LOAD_STATE', payload: parsed });
+      }
+    } catch (e) {
+      console.error('Error loading data:', e);
+    }
+  }, []);
+
+  // Сохранение в localStorage при изменении
+  useEffect(() => {
+    try {
+      localStorage.setItem('car_accounting_data', JSON.stringify(state));
+    } catch (e) {
+      console.error('Error saving data:', e);
+    }
+  }, [state]);
+
+  return (
+    <StoreContext.Provider value={{ state, dispatch }}>
+      {children}
+    </StoreContext.Provider>
+  );
+}
+
+export function useStore() {
+  const context = useContext(StoreContext);
+  if (!context) {
+    throw new Error('useStore must be used within StoreProvider');
+  }
+  return context;
+}
+=== КОНЕЦ ФАЙЛА: src/store.tsx ===
+
+================================================================================
+=== НАЧАЛО ФАЙЛА: src/components/Toast.tsx ===
+import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import { CheckCircle, XCircle, AlertCircle, Info, X } from 'lucide-react';
+
+type ToastType = 'success' | 'error' | 'warning' | 'info';
+
+interface Toast {
+  id: string;
+  type: ToastType;
+  message: string;
+  duration?: number;
+}
+
+interface ToastContextType {
+  showToast: (type: ToastType, message: string, duration?: number) => void;
+  success: (message: string) => void;
+  error: (message: string) => void;
+  warning: (message: string) => void;
+  info: (message: string) => void;
+}
+
+const ToastContext = createContext<ToastContextType | null>(null);
+
+export function useToast() {
+  const context = useContext(ToastContext);
+  if (!context) {
+    throw new Error('useToast must be used within ToastProvider');
+  }
+  return context;
+}
+
+export function ToastProvider({ children }: { children: ReactNode }) {
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  const showToast = useCallback((type: ToastType, message: string, duration = 3000) => {
+    const id = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+    const toast: Toast = { id, type, message, duration };
+    
+    setToasts(prev => [...prev, toast]);
+
+    if (duration > 0) {
+      setTimeout(() => {
+        setToasts(prev => prev.filter(t => t.id !== id));
+      }, duration);
+    }
+  }, []);
+
+  const success = useCallback((message: string) => showToast('success', message), [showToast]);
+  const error = useCallback((message: string) => showToast('error', message, 5000), [showToast]);
+  const warning = useCallback((message: string) => showToast('warning', message, 4000), [showToast]);
+  const info = useCallback((message: string) => showToast('info', message), [showToast]);
+
+  const removeToast = (id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
+
+  return (
+    <ToastContext.Provider value={{ showToast, success, error, warning, info }}>
+      {children}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
+    </ToastContext.Provider>
+  );
+}
+
+function ToastContainer({ toasts, onRemove }: { toasts: Toast[]; onRemove: (id: string) => void }) {
+  return (
+    <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
+      {toasts.map(toast => (
+        <ToastItem key={toast.id} toast={toast} onRemove={onRemove} />
+      ))}
+    </div>
+  );
+}
+
+function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: (id: string) => void }) {
+  const icons = {
+    success: <CheckCircle size={20} className="text-green-500" />,
+    error: <XCircle size={20} className="text-red-500" />,
+    warning: <AlertCircle size={20} className="text-yellow-500" />,
+    info: <Info size={20} className="text-blue-500" />,
+  };
+
+  const bgColors = {
+    success: 'bg-green-50 border-green-200 dark:bg-green-900/30 dark:border-green-800',
+    error: 'bg-red-50 border-red-200 dark:bg-red-900/30 dark:border-red-800',
+    warning: 'bg-yellow-50 border-yellow-200 dark:bg-yellow-900/30 dark:border-yellow-800',
+    info: 'bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-800',
+  };
+
+  const textColors = {
+    success: 'text-green-800 dark:text-green-200',
+    error: 'text-red-800 dark:text-red-200',
+    warning: 'text-yellow-800 dark:text-yellow-200',
+    info: 'text-blue-800 dark:text-blue-200',
+  };
+
+  return (
+    <div
+      className={`flex items-start gap-3 p-4 rounded-lg border shadow-lg animate-slide-in ${bgColors[toast.type]}`}
+      style={{
+        animation: 'slideIn 0.3s ease-out',
+      }}
+    >
+      <div className="flex-shrink-0">{icons[toast.type]}</div>
+      <div className={`flex-1 text-sm ${textColors[toast.type]}`}>{toast.message}</div>
+      <button
+        onClick={() => onRemove(toast.id)}
+        className="flex-shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+      >
+        <X size={16} />
+      </button>
+    </div>
+  );
+}
+=== КОНЕЦ ФАЙЛА: src/components/Toast.tsx ===
+
+================================================================================
+=== НАЧАЛО ФАЙЛА: src/components/SearchAndTags.tsx ===
+import { useState, useMemo } from 'react';
+import { X, Search } from 'lucide-react';
+
+export interface FilterTag {
+  field: string; // 'car_number' | 'car_type' | 'carrier' | 'date' | 'service_type'
+  value: string;
+  label: string;
+}
+
+interface Props {
+  searchQuery: string;
+  onSearchChange: (q: string) => void;
+  tags: FilterTag[];
+  onRemoveTag: (index: number) => void;
+  onClearAll: () => void;
+  placeholder?: string;
+  darkMode?: boolean;
+}
+
+export default function SearchAndTags({ searchQuery, onSearchChange, tags, onRemoveTag, onClearAll, placeholder, darkMode = false }: Props) {
+  return (
+    <div className="space-y-2">
+      {/* Строка поиска */}
+      <div className="relative">
+        <Search size={16} className={`absolute left-3 top-1/2 -translate-y-1/2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={e => onSearchChange(e.target.value)}
+          placeholder={placeholder || '🔍 Поиск по всем полям...'}
+          className={`w-full border rounded pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+        />
+        {searchQuery && (
+          <button
+            onClick={() => onSearchChange('')}
+            className={`absolute right-3 top-1/2 -translate-y-1/2 ${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-400 hover:text-gray-600'}`}
+          >
+            <X size={16} />
+          </button>
+        )}
+      </div>
+
+      {/* Теги фильтров */}
+      {tags.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Фильтры:</span>
+          {tags.map((tag, idx) => (
+            <span
+              key={idx}
+              className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full ${darkMode ? 'bg-blue-900 text-blue-200' : 'bg-blue-100 text-blue-800'}`}
+            >
+              <span className="font-medium">{tag.label}:</span>
+              <span>{tag.value}</span>
+              <button
+                onClick={() => onRemoveTag(idx)}
+                className="ml-1 hover:text-red-600"
+                title="Удалить фильтр"
+              >
+                <X size={12} />
+              </button>
+            </span>
+          ))}
+          <button
+            onClick={onClearAll}
+            className={`text-xs underline ${darkMode ? 'text-gray-400 hover:text-red-400' : 'text-gray-500 hover:text-red-600'}`}
+          >
+            Сбросить все
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+=== КОНЕЦ ФАЙЛА: src/components/SearchAndTags.tsx ===
+
+================================================================================
+=== НАЧАЛО ФАЙЛА: src/App.tsx ===
+import { useState, useEffect, useRef } from 'react';
+import { StoreProvider, useStore } from './store';
+import { ToastProvider, useToast } from './components/Toast';
+import AutoTab from './components/AutoTab';
+import ServicesTab from './components/ServicesTab';
+import ResultsTab from './components/ResultsTab';
+import TariffsTab from './components/TariffsTab';
+import StatsTab from './components/StatsTab';
+import { Car, Wrench, BarChart3, DollarSign, TrendingUp, HelpCircle, Save, FolderOpen, FilePlus, Sun, Moon } from 'lucide-react';
+
+const APP_NAME = 'Учёт автомобилей';
+const VERSION = '2.0';
+const COMPANY_NAME = "АО «Логистик-Центр»";
+
+function AppContent() {
+  const { state, dispatch } = useStore();
+  const toast = useToast();
+  const [activeTab, setActiveTab] = useState(0);
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [showHelp, setShowHelp] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('Готов к работе');
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem('darkMode');
+    return saved === 'true';
+  });
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Применение темы
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('darkMode', String(darkMode));
+  }, [darkMode]);
+
+  // Обновление времени
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Горячие клавиши
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'F1') {
+        e.preventDefault();
+        setShowHelp(true);
+      }
+      if (e.ctrlKey && e.key === 's') {
+        e.preventDefault();
+        handleSave();
+      }
+      if (e.ctrlKey && e.key === 'o') {
+        e.preventDefault();
+        handleLoad();
+      }
+      if (e.ctrlKey && e.key === 'n') {
+        e.preventDefault();
+        handleNew();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [state]);
+
+  const showStatus = (msg: string) => {
+    setStatusMessage(msg);
+    setTimeout(() => setStatusMessage('Готов к работе'), 3000);
+  };
+
+  // Сохранение в файл
+  const handleSave = () => {
+    const data = {
+      autoRecords: state.autoRecords,
+      serviceRecords: state.serviceRecords,
+      tariffs: state.tariffs,
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const dateStr = new Date().toISOString().split('T')[0];
+    a.download = `car_accounting_${dateStr}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Сохранено: авто — ${state.autoRecords.length}, услуг — ${state.serviceRecords.length}`);
+    showStatus(`💾 Сохранено: авто — ${state.autoRecords.length}, услуг — ${state.serviceRecords.length}`);
+  };
+
+  // Загрузка из файла
+  const handleLoad = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target?.result as string);
+        if (!data.autoRecords || !data.serviceRecords) {
+          toast.error('Неверный формат файла');
+          return;
+        }
+        dispatch({ type: 'IMPORT_DATA', payload: data });
+        toast.success(`Загружено: авто — ${data.autoRecords.length}, услуг — ${data.serviceRecords.length}`);
+        showStatus(`📂 Загружено: авто — ${data.autoRecords.length}, услуг — ${data.serviceRecords.length}`);
+      } catch (err) {
+        toast.error('Ошибка чтения файла: ' + (err as Error).message);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  // Новый файл
+  const handleNew = () => {
+    if ((state.autoRecords.length > 0 || state.serviceRecords.length > 0) &&
+        !confirm('Все несохранённые данные будут потеряны. Продолжить?')) {
+      return;
+    }
+    dispatch({ type: 'CLEAR_ALL' });
+    toast.info('Создан новый файл');
+    showStatus('📄 Создан новый файл');
+  };
+
+  const tabs = [
+    { name: 'Данные автомобиля', icon: Car, component: AutoTab },
+    { name: 'Другие услуги', icon: Wrench, component: ServicesTab },
+    { name: 'Итоги', icon: BarChart3, component: ResultsTab },
+    { name: 'Тарифы', icon: DollarSign, component: TariffsTab },
+    { name: 'Статистика', icon: TrendingUp, component: StatsTab },
+  ];
+
+  const ActiveComponent = tabs[activeTab].component;
+  const totalRecords = state.autoRecords.length + state.serviceRecords.length;
+
+  return (
+    <div className={`h-screen flex flex-col ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
+      {/* Скрытый input для загрузки файлов */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json"
+        onChange={handleFileSelected}
+        className="hidden"
+      />
+
+      {/* Шапка */}
+      <header className="bg-gradient-to-r from-blue-800 to-blue-600 text-white shadow-lg flex-shrink-0">
+        <div className="max-w-full mx-auto px-4 py-3 flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+              <Car size={24} />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold">{APP_NAME} v{VERSION}</h1>
+              <p className="text-xs text-blue-200">{COMPANY_NAME}</p>
+            </div>
+          </div>
+
+          {/* Кнопки управления файлами */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setDarkMode(!darkMode)}
+              className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-sm transition"
+              title={darkMode ? 'Светлая тема' : 'Тёмная тема'}
+            >
+              {darkMode ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+            <button
+              onClick={handleLoad}
+              className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-sm transition"
+              title="Загрузить из файла (Ctrl+O)"
+            >
+              <FolderOpen size={16} /> Загрузить
+            </button>
+            <button
+              onClick={handleSave}
+              className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-sm transition"
+              title="Сохранить в файл (Ctrl+S)"
+            >
+              <Save size={16} /> Сохранить
+            </button>
+            <button
+              onClick={handleNew}
+              className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-sm transition"
+              title="Новый файл (Ctrl+N)"
+            >
+              <FilePlus size={16} /> Новый
+            </button>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <div className="text-right text-xs">
+              <div className="text-blue-200">Записей: {totalRecords}</div>
+              <div>{currentTime.toLocaleString('ru-RU')}</div>
+            </div>
+            <button
+              onClick={() => setShowHelp(true)}
+              className="p-2 bg-white/10 rounded-lg hover:bg-white/20 transition"
+              title="Справка (F1)"
+            >
+              <HelpCircle size={20} />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Вкладки */}
+      <nav className={`border-b shadow-sm flex-shrink-0 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+        <div className="max-w-full mx-auto px-4">
+          <div className="flex overflow-x-auto">
+            {tabs.map((tab, idx) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={idx}
+                  onClick={() => setActiveTab(idx)}
+                  className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition whitespace-nowrap ${
+                    activeTab === idx
+                      ? (darkMode ? 'border-blue-400 text-blue-400 bg-gray-700' : 'border-blue-600 text-blue-600 bg-blue-50')
+                      : (darkMode ? 'border-transparent text-gray-400 hover:text-gray-200 hover:bg-gray-700' : 'border-transparent text-gray-600 hover:text-gray-800 hover:bg-gray-50')
+                  }`}
+                >
+                  <Icon size={16} />
+                  {tab.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </nav>
+
+      {/* Содержимое — занимает всё оставшееся место */}
+      <main className="flex-1 max-w-full mx-auto px-4 py-4 w-full flex flex-col min-h-0 overflow-hidden">
+        <div className="flex-1 min-h-0">
+          <ActiveComponent onStatus={showStatus} darkMode={darkMode} />
+        </div>
+      </main>
+
+      {/* Строка состояния — всегда внизу */}
+      <footer className={`border-t px-4 py-2 flex items-center justify-between text-xs flex-shrink-0 ${darkMode ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-white border-gray-200 text-gray-500'}`}>
+        <span>{statusMessage}</span>
+        <span>{currentTime.toLocaleDateString('ru-RU')} {currentTime.toLocaleTimeString('ru-RU')}</span>
+      </footer>
+
+      {/* Модальное окно справки */}
+      {showHelp && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowHelp(false)}>
+          <div className={`rounded-lg shadow-xl max-w-md w-full mx-4 p-6 ${darkMode ? 'bg-gray-800 text-gray-100' : 'bg-white text-gray-900'}`} onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-bold mb-4">📖 Справка</h2>
+            <div className="space-y-3 text-sm">
+              <p className="font-bold">{APP_NAME} v{VERSION}</p>
+              <p className={darkMode ? 'text-gray-400' : 'text-gray-600'}>{COMPANY_NAME}</p>
+              
+              <div className={`rounded p-3 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                <p className="font-medium mb-2">Горячие клавиши:</p>
+                <ul className="space-y-1 text-xs">
+                  <li><kbd className={`px-1 rounded ${darkMode ? 'bg-gray-600 text-gray-200' : 'bg-gray-200'}`}>F1</kbd> — эта справка</li>
+                  <li><kbd className={`px-1 rounded ${darkMode ? 'bg-gray-600 text-gray-200' : 'bg-gray-200'}`}>Ctrl+S</kbd> — сохранить в файл</li>
+                  <li><kbd className={`px-1 rounded ${darkMode ? 'bg-gray-600 text-gray-200' : 'bg-gray-200'}`}>Ctrl+O</kbd> — загрузить из файла</li>
+                  <li><kbd className={`px-1 rounded ${darkMode ? 'bg-gray-600 text-gray-200' : 'bg-gray-200'}`}>Ctrl+N</kbd> — новый файл</li>
+                  <li><kbd className={`px-1 rounded ${darkMode ? 'bg-gray-600 text-gray-200' : 'bg-gray-200'}`}>Enter</kbd> — добавить запись</li>
+                </ul>
+              </div>
+
+              <div className={`rounded p-3 ${darkMode ? 'bg-blue-900/30' : 'bg-blue-50'}`}>
+                <p className="font-medium mb-2">Как начать работу:</p>
+                <ol className="space-y-1 text-xs list-decimal list-inside">
+                  <li>Перейдите во вкладку «Тарифы»</li>
+                  <li>Добавьте тарифы для автомобилей и/или услуг</li>
+                  <li>Перейдите на вкладку «Данные автомобиля» или «Другие услуги»</li>
+                  <li>Заполните форму и нажмите «Добавить»</li>
+                </ol>
+              </div>
+
+              <p className={`text-xs mt-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                Разработчик: Шавлаков А.В.<br />
+                Норильск, 2025
+              </p>
+            </div>
+            <button
+              onClick={() => setShowHelp(false)}
+              className="mt-4 w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+            >
+              Закрыть
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <StoreProvider>
+      <ToastProvider>
+        <AppContent />
+      </ToastProvider>
+    </StoreProvider>
+  );
+}
+=== КОНЕЦ ФАЙЛА: src/App.tsx ===
+
+================================================================================
+                    КОНЕЦ АРХИВА
+================================================================================
+
+ПРИМЕЧАНИЕ: Файлы AutoTab.tsx, ServicesTab.tsx, ResultsTab.tsx, TariffsTab.tsx 
+и StatsTab.tsx слишком большие для включения в этот текстовый архив.
+
+Для восстановления проекта:
+1. Создайте файлы конфигурации из этого архива
+2. Создайте файлы src/main.tsx, src/index.css, src/types.ts, src/store.tsx
+3. Создайте компоненты src/components/Toast.tsx и src/components/SearchAndTags.tsx
+4. Создайте src/App.tsx
+5. Для остальных компонентов (AutoTab, ServicesTab, ResultsTab, TariffsTab, StatsTab)
+   попросите ИИ-ассистента восстановить их, сказав:
+   "Восстанови компоненты вкладок из предыдущей версии проекта"
+
+Или попросите ИИ создать новый проект с нуля, описав требования.
+
+================================================================================
