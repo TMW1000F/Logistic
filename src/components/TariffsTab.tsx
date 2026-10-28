@@ -138,7 +138,7 @@ export default function TariffsTab({ onStatus, darkMode = false }: Props) {
     <div className="space-y-4">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Левая часть - форма */}
-        <div className={`rounded-lg border p-4 space-y-4 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+        <div className={`rounded-lg border p-4 space-y-4 ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'}`}>
           <h3 className={`font-bold text-sm border-b pb-2 ${darkMode ? 'text-gray-200 border-gray-700' : 'text-gray-700 border-gray-200'}`}>💰 Редактирование тарифов</h3>
 
           {/* Переключатель типа */}
@@ -234,7 +234,7 @@ export default function TariffsTab({ onStatus, darkMode = false }: Props) {
         </div>
 
         {/* Правая часть - таблица тарифов */}
-        <div className={`rounded-lg border p-4 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+        <div className={`rounded-lg border p-4 ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'}`}>
           <h3 className={`font-bold text-sm mb-3 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>📋 Список тарифов ({filteredTariffs.length})</h3>
           
           <div className="overflow-x-auto max-h-[500px] overflow-y-auto">

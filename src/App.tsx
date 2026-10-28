@@ -238,7 +238,7 @@ function AppContent() {
       </nav>
 
       {/* Содержимое — занимает всё оставшееся место */}
-      <main className="flex-1 max-w-full mx-auto px-4 py-4 w-full flex flex-col min-h-0">
+      <main className="flex-1 max-w-full mx-auto px-4 py-4 w-full flex flex-col min-h-0 overflow-hidden">
         <ActiveComponent onStatus={showStatus} darkMode={darkMode} />
       </main>
 

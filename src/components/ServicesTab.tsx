@@ -273,9 +273,9 @@ export default function ServicesTab({ onStatus, darkMode = false }: Props) {
   };
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
+    <div className="flex flex-col h-full">
       {/* Sticky форма ввода */}
-      <div className={`flex-shrink-0 rounded-lg border p-3 mb-2 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+      <div className={`flex-shrink-0 rounded-lg border p-3 mb-2 ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'}`}>
         {/* Строка 1: Тип услуги, Компания, Количество, Дата */}
         <div className="grid grid-cols-4 gap-2 mb-2">
           <div>
@@ -354,7 +354,7 @@ export default function ServicesTab({ onStatus, darkMode = false }: Props) {
       </div>
 
       {/* Контейнер: поиск + таблица + итоги */}
-      <div className={`flex flex-col flex-1 min-h-0 rounded-lg border overflow-hidden ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+      <div className={`flex flex-col flex-1 min-h-0 rounded-lg border overflow-hidden ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'}`}>
         {/* Поиск и теги */}
         <div className={`flex-shrink-0 border-b p-3 ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
           <SearchAndTags
@@ -439,7 +439,7 @@ export default function ServicesTab({ onStatus, darkMode = false }: Props) {
         {/* Итоги — закреплено снизу, с группировкой */}
         <div className={`flex-shrink-0 border-t px-4 py-2 flex flex-wrap items-center gap-4 shadow-[0_-2px_4px_rgba(0,0,0,0.05)] ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gray-50'}`}>
           <span className={`text-sm ${darkMode ? 'text-gray-300' : ''}`}>Услуг: <b>{totals.count}</b></span>
-          <span className="text-sm text-red-600 font-bold">Сумма: {formatNumber(totals.totalCost)} ₽</span>
+          <span className={`text-sm font-bold ${darkMode ? 'text-red-400' : 'text-red-600'}`}>Сумма: {formatNumber(totals.totalCost)} ₽</span>
           
           <div className="ml-auto flex items-center gap-2">
             <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Группировка:</span>

@@ -164,7 +164,7 @@ export default function ResultsTab({ onStatus, darkMode = false }: Props) {
   return (
     <div className="space-y-4">
       {/* Режим отображения */}
-      <div className={`rounded-lg border p-4 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+      <div className={`rounded-lg border p-4 ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'}`}>
         <h3 className={`font-bold text-sm mb-3 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>📊 Режим отображения</h3>
         <div className="flex flex-wrap gap-4">
           <label className={`flex items-center gap-1 text-sm ${darkMode ? 'text-gray-300' : ''}`}>
@@ -183,7 +183,7 @@ export default function ResultsTab({ onStatus, darkMode = false }: Props) {
       </div>
 
       {/* Фильтры */}
-      <div className={`rounded-lg border p-4 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+      <div className={`rounded-lg border p-4 ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'}`}>
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
             <label className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Начальная дата:</label>
@@ -208,7 +208,7 @@ export default function ResultsTab({ onStatus, darkMode = false }: Props) {
 
       {/* Статистика по типам услуг */}
       {serviceTypeStats.length > 0 && (
-        <div className={`rounded-lg border p-4 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+        <div className={`rounded-lg border p-4 ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'}`}>
           <h3 className={`font-bold text-sm mb-3 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>📈 Статистика по типам услуг</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -238,7 +238,7 @@ export default function ResultsTab({ onStatus, darkMode = false }: Props) {
       )}
 
       {/* Сводная таблица */}
-      <div className={`rounded-lg border overflow-hidden ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+      <div className={`rounded-lg border overflow-hidden ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'}`}>
         <div className="overflow-x-auto">
           {summaryData ? (
             <table className="w-full text-sm">
@@ -282,7 +282,7 @@ export default function ResultsTab({ onStatus, darkMode = false }: Props) {
                     })}
                     <td className="px-2 py-1.5 text-right border-l font-medium">{row.dayCount}</td>
                     <td className="px-2 py-1.5 text-right">{formatNumber(row.dayTime)}</td>
-                    <td className="px-2 py-1.5 text-right font-medium text-red-600">{formatNumber(row.dayCost)}</td>
+                    <td className={`px-2 py-1.5 text-right font-medium ${darkMode ? 'text-red-400' : 'text-red-600'}`}>{formatNumber(row.dayCost)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -295,7 +295,7 @@ export default function ResultsTab({ onStatus, darkMode = false }: Props) {
         {/* Общие итоги */}
         {summaryData && (
           <div className={`border-t px-4 py-3 ${darkMode ? 'border-gray-700 bg-gray-700/50' : 'border-gray-200 bg-gray-50'}`}>
-            <p className="text-sm font-bold text-red-600">
+            <p className={`text-sm font-bold ${darkMode ? 'text-red-400' : 'text-red-600'}`}>
               Всего за период: {summaryData.totalAllCount} записей, время {formatNumber(summaryData.totalAllTime)} ч, сумма {formatNumber(summaryData.totalAllCost)} ₽
             </p>
           </div>

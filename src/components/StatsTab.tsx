@@ -94,7 +94,7 @@ export default function StatsTab({ onStatus, darkMode = false }: Props) {
   return (
     <div className="space-y-4">
       {/* Фильтры */}
-      <div className={`rounded-lg border p-4 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+      <div className={`rounded-lg border p-4 ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'}`}>
         <h3 className={`font-bold text-sm mb-3 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>📅 Период статистики</h3>
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
@@ -128,7 +128,7 @@ export default function StatsTab({ onStatus, darkMode = false }: Props) {
       </div>
 
       {/* Таблица по типам автомобилей */}
-      <div className={`rounded-lg border p-4 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+      <div className={`rounded-lg border p-4 ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'}`}>
         <h3 className={`font-bold text-sm mb-3 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>🚗 Статистика по типам автомобилей</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -162,7 +162,7 @@ export default function StatsTab({ onStatus, darkMode = false }: Props) {
       </div>
 
       {/* Таблица по типам услуг */}
-      <div className={`rounded-lg border p-4 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+      <div className={`rounded-lg border p-4 ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200'}`}>
         <h3 className={`font-bold text-sm mb-3 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>🔧 Статистика по типам услуг</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -228,7 +228,7 @@ function StatCard({ title, value, color, darkMode = false }: { title: string; va
     green: 'text-green-300',
     purple: 'text-purple-300',
     orange: 'text-orange-300',
-    red: 'text-red-300',
+    red: 'text-red-400',
   };
 
   return (
