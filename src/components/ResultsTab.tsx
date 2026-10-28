@@ -256,9 +256,9 @@ export default function ResultsTab({ onStatus, darkMode = false }: Props) {
         <div className="flex-1 min-h-0 overflow-auto">
           {summaryData ? (
             <table className="w-full text-sm">
-              <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-100'}>
+              <thead className={`sticky top-0 z-20 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
                 <tr>
-                  <th className={`px-2 py-2 text-left text-xs font-medium sticky left-0 z-10 ${darkMode ? 'text-gray-300 bg-gray-700' : 'text-gray-600 bg-gray-100'}`}>Дата</th>
+                  <th className={`px-2 py-2 text-left text-xs font-medium sticky left-0 z-30 ${darkMode ? 'text-gray-300 bg-gray-700' : 'text-gray-600 bg-gray-100'}`}>Дата</th>
                   {summaryData.sortedTypes.map((type, idx) => {
                     // Чередование цветов для колонок
                     const colColors = darkMode 
@@ -273,7 +273,7 @@ export default function ResultsTab({ onStatus, darkMode = false }: Props) {
                   <th className={`px-2 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300 bg-purple-900/20' : 'text-gray-600 bg-purple-50'}`}>Всего стоимость</th>
                 </tr>
                 <tr className={darkMode ? 'bg-gray-700/50' : 'bg-gray-50'}>
-                  <th className={`px-2 py-1 sticky left-0 z-10 ${darkMode ? 'bg-gray-700/50' : 'bg-gray-50'}`}></th>
+                  <th className={`px-2 py-1 sticky left-0 z-30 ${darkMode ? 'bg-gray-700/50' : 'bg-gray-50'}`}></th>
                   {summaryData.sortedTypes.map((_, idx) => {
                     const colColors = darkMode 
                       ? (idx % 2 === 0 ? 'bg-blue-900/20' : 'bg-green-900/20')
