@@ -23,6 +23,7 @@ export default function ResultsTab({ onStatus, darkMode = false }: Props) {
     return `${now.getFullYear()}-12-31`;
   });
   const [selectedCarrier, setSelectedCarrier] = useState('');
+  const [selectedRow, setSelectedRow] = useState<number | null>(null);
 
   // Все перевозчики
   const allCarriers = useMemo(() => {
@@ -258,46 +259,75 @@ export default function ResultsTab({ onStatus, darkMode = false }: Props) {
               <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-100'}>
                 <tr>
                   <th className={`px-2 py-2 text-left text-xs font-medium sticky left-0 z-10 ${darkMode ? 'text-gray-300 bg-gray-700' : 'text-gray-600 bg-gray-100'}`}>Дата</th>
-                  {summaryData.sortedTypes.map((type, idx) => (
-                    <th key={idx} colSpan={3} className={`px-2 py-1 text-center text-xs font-medium border-l ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{type}</th>
-                  ))}
-                  <th className={`px-2 py-2 text-right text-xs font-medium border-l ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Всего ТС</th>
-                  <th className={`px-2 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Всего часов</th>
-                  <th className={`px-2 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Всего стоимость</th>
+                  {summaryData.sortedTypes.map((type, idx) => {
+                    // Чередование цветов для колонок
+                    const colColors = darkMode 
+                      ? (idx % 2 === 0 ? 'bg-blue-900/20' : 'bg-green-900/20')
+                      : (idx % 2 === 0 ? 'bg-blue-50' : 'bg-green-50');
+                    return (
+                      <th key={idx} colSpan={3} className={`px-2 py-1 text-center text-xs font-medium border-l ${colColors} ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{type}</th>
+                    );
+                  })}
+                  <th className={`px-2 py-2 text-right text-xs font-medium border-l ${darkMode ? 'text-gray-300 bg-purple-900/20' : 'text-gray-600 bg-purple-50'}`}>Всего ТС</th>
+                  <th className={`px-2 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300 bg-purple-900/20' : 'text-gray-600 bg-purple-50'}`}>Всего часов</th>
+                  <th className={`px-2 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300 bg-purple-900/20' : 'text-gray-600 bg-purple-50'}`}>Всего стоимость</th>
                 </tr>
                 <tr className={darkMode ? 'bg-gray-700/50' : 'bg-gray-50'}>
                   <th className={`px-2 py-1 sticky left-0 z-10 ${darkMode ? 'bg-gray-700/50' : 'bg-gray-50'}`}></th>
-                  {summaryData.sortedTypes.map((_, idx) => (
-                    <React.Fragment key={idx}>
-                      <th className={`px-1 py-1 text-xs border-l ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Кол-во</th>
-                      <th className={`px-1 py-1 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Часы</th>
-                      <th className={`px-1 py-1 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Стоим.</th>
-                    </React.Fragment>
-                  ))}
-                  <th className="px-2 py-1 border-l"></th>
-                  <th className="px-2 py-1"></th>
-                  <th className="px-2 py-1"></th>
+                  {summaryData.sortedTypes.map((_, idx) => {
+                    const colColors = darkMode 
+                      ? (idx % 2 === 0 ? 'bg-blue-900/20' : 'bg-green-900/20')
+                      : (idx % 2 === 0 ? 'bg-blue-50' : 'bg-green-50');
+                    return (
+                      <React.Fragment key={idx}>
+                        <th className={`px-1 py-1 text-xs border-l ${colColors} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Кол-во</th>
+                        <th className={`px-1 py-1 text-xs ${colColors} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Часы</th>
+                        <th className={`px-1 py-1 text-xs ${colColors} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Стоим.</th>
+                      </React.Fragment>
+                    );
+                  })}
+                  <th className={`px-2 py-1 border-l ${darkMode ? 'bg-purple-900/20' : 'bg-purple-50'}`}></th>
+                  <th className={`px-2 py-1 ${darkMode ? 'bg-purple-900/20' : 'bg-purple-50'}`}></th>
+                  <th className={`px-2 py-1 ${darkMode ? 'bg-purple-900/20' : 'bg-purple-50'}`}></th>
                 </tr>
               </thead>
               <tbody>
-                {summaryData.rows.map((row, idx) => (
-                  <tr key={idx} className={`border-t ${darkMode ? 'border-gray-700 hover:bg-gray-700' : 'hover:bg-gray-50'}`}>
-                    <td className={`px-2 py-1.5 sticky left-0 z-10 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>{formatDate(row.date)}</td>
-                    {summaryData.sortedTypes.map((type, tIdx) => {
-                      const td = row.typeData[type] || { count: 0, time: 0, cost: 0 };
-                      return (
-                        <React.Fragment key={tIdx}>
-                          <td className="px-1 py-1.5 text-center border-l">{td.count || ''}</td>
-                          <td className="px-1 py-1.5 text-right">{td.time > 0 ? formatNumber(td.time) : ''}</td>
-                          <td className="px-1 py-1.5 text-right">{td.cost > 0 ? formatNumber(td.cost) : ''}</td>
-                        </React.Fragment>
-                      );
-                    })}
-                    <td className="px-2 py-1.5 text-right border-l font-medium">{row.dayCount}</td>
-                    <td className="px-2 py-1.5 text-right">{formatNumber(row.dayTime)}</td>
-                    <td className={`px-2 py-1.5 text-right font-medium ${darkMode ? 'text-red-400' : 'text-red-600'}`}>{formatNumber(row.dayCost)}</td>
-                  </tr>
-                ))}
+                {summaryData.rows.map((row, idx) => {
+                  const isSelected = selectedRow === idx;
+                  const rowBg = isSelected 
+                    ? (darkMode ? 'bg-blue-900/40' : 'bg-blue-100')
+                    : (darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50');
+                  
+                  return (
+                    <tr 
+                      key={idx} 
+                      className={`border-t cursor-pointer transition-colors ${rowBg} ${darkMode ? 'border-gray-700' : ''}`}
+                      onClick={() => setSelectedRow(isSelected ? null : idx)}
+                    >
+                      <td className={`px-2 py-1.5 sticky left-0 z-10 ${isSelected ? (darkMode ? 'bg-blue-900/40' : 'bg-blue-100') : (darkMode ? 'bg-gray-800' : 'bg-white')}`}>{formatDate(row.date)}</td>
+                      {summaryData.sortedTypes.map((type, tIdx) => {
+                        const td = row.typeData[type] || { count: 0, time: 0, cost: 0 };
+                        const colColors = darkMode 
+                          ? (tIdx % 2 === 0 ? 'bg-blue-900/10' : 'bg-green-900/10')
+                          : (tIdx % 2 === 0 ? 'bg-blue-50/50' : 'bg-green-50/50');
+                        const selectedColColors = isSelected 
+                          ? (darkMode ? 'bg-blue-900/30' : 'bg-blue-100/70')
+                          : colColors;
+                        
+                        return (
+                          <React.Fragment key={tIdx}>
+                            <td className={`px-1 py-1.5 text-center border-l ${selectedColColors}`}>{td.count || ''}</td>
+                            <td className={`px-1 py-1.5 text-right ${selectedColColors}`}>{td.time > 0 ? formatNumber(td.time) : ''}</td>
+                            <td className={`px-1 py-1.5 text-right ${selectedColColors}`}>{td.cost > 0 ? formatNumber(td.cost) : ''}</td>
+                          </React.Fragment>
+                        );
+                      })}
+                      <td className={`px-2 py-1.5 text-right border-l font-medium ${darkMode ? 'bg-purple-900/10' : 'bg-purple-50/50'} ${isSelected ? (darkMode ? 'bg-blue-900/30' : 'bg-blue-100/70') : ''}`}>{row.dayCount}</td>
+                      <td className={`px-2 py-1.5 text-right ${darkMode ? 'bg-purple-900/10' : 'bg-purple-50/50'} ${isSelected ? (darkMode ? 'bg-blue-900/30' : 'bg-blue-100/70') : ''}`}>{formatNumber(row.dayTime)}</td>
+                      <td className={`px-2 py-1.5 text-right font-medium ${darkMode ? 'bg-purple-900/10 text-red-400' : 'bg-purple-50/50 text-red-600'} ${isSelected ? (darkMode ? 'bg-blue-900/30' : 'bg-blue-100/70') : ''}`}>{formatNumber(row.dayCost)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           ) : (
