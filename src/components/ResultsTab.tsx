@@ -172,46 +172,50 @@ export default function ResultsTab({ onStatus, darkMode = false }: Props) {
 
   return (
     <div className="flex flex-col h-full gap-4">
-      {/* Режим отображения */}
+      {/* Режим отображения и фильтры в одну строку */}
       <div className={`flex-shrink-0 rounded-lg p-4 ${darkMode ? 'bg-gray-800' : 'bg-white border border-gray-200'}`}>
-        <h3 className={`font-bold text-sm mb-3 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>📊 Режим отображения</h3>
-        <div className="flex flex-wrap gap-4">
-          <label className={`flex items-center gap-1 text-sm ${darkMode ? 'text-gray-300' : ''}`}>
-            <input type="radio" checked={mode === 'auto_only'} onChange={() => setMode('auto_only')} />
-            Без доп. услуг
-          </label>
-          <label className={`flex items-center gap-1 text-sm ${darkMode ? 'text-gray-300' : ''}`}>
-            <input type="radio" checked={mode === 'all'} onChange={() => setMode('all')} />
-            С доп. услугами
-          </label>
-          <label className={`flex items-center gap-1 text-sm ${darkMode ? 'text-gray-300' : ''}`}>
-            <input type="radio" checked={mode === 'services_only'} onChange={() => setMode('services_only')} />
-            Только доп. услуги
-          </label>
-        </div>
-      </div>
+        <div className="flex flex-wrap items-center gap-4">
+          {/* Режим отображения */}
+          <div className="flex items-center gap-3">
+            <span className={`text-sm font-medium ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>📊 Режим:</span>
+            <label className={`flex items-center gap-1 text-sm ${darkMode ? 'text-gray-300' : ''}`}>
+              <input type="radio" checked={mode === 'auto_only'} onChange={() => setMode('auto_only')} />
+              Без доп. услуг
+            </label>
+            <label className={`flex items-center gap-1 text-sm ${darkMode ? 'text-gray-300' : ''}`}>
+              <input type="radio" checked={mode === 'all'} onChange={() => setMode('all')} />
+              С доп. услугами
+            </label>
+            <label className={`flex items-center gap-1 text-sm ${darkMode ? 'text-gray-300' : ''}`}>
+              <input type="radio" checked={mode === 'services_only'} onChange={() => setMode('services_only')} />
+              Только доп. услуги
+            </label>
+          </div>
 
-      {/* Фильтры */}
-      <div className={`flex-shrink-0 rounded-lg p-4 ${darkMode ? 'bg-gray-800' : 'bg-white border border-gray-200'}`}>
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2">
-            <label className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Начальная дата:</label>
-            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className={`border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+          {/* Разделитель */}
+          <div className={`h-6 w-px ${darkMode ? 'bg-gray-600' : 'bg-gray-300'}`}></div>
+
+          {/* Фильтры */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <label className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Начальная дата:</label>
+              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className={`border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Конечная дата:</label>
+              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className={`border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Перевозчик:</label>
+              <select value={selectedCarrier} onChange={e => setSelectedCarrier(e.target.value)} className={`border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                <option value="">Все</option>
+                {allCarriers.filter(c => c).map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <button onClick={exportToExcel} className="bg-green-600 text-white px-3 py-1.5 rounded text-sm hover:bg-green-700">
+              💾 Сохранить в Excel
+            </button>
           </div>
-          <div className="flex items-center gap-2">
-            <label className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Конечная дата:</label>
-            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className={`border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
-          </div>
-          <div className="flex items-center gap-2">
-            <label className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Перевозчик:</label>
-            <select value={selectedCarrier} onChange={e => setSelectedCarrier(e.target.value)} className={`border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
-              <option value="">Все</option>
-              {allCarriers.filter(c => c).map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-          <button onClick={exportToExcel} className="bg-green-600 text-white px-3 py-1.5 rounded text-sm hover:bg-green-700">
-            💾 Сохранить в Excel
-          </button>
         </div>
       </div>
 
