@@ -3,7 +3,11 @@ import { useStore } from '../store';
 import { Tariff, formatNumber, generateId } from '../types';
 import { Save, Edit, Trash2, Download, Upload } from 'lucide-react';
 
-export default function TariffsTab() {
+interface Props {
+  onStatus?: (msg: string) => void;
+}
+
+export default function TariffsTab({ onStatus }: Props) {
   const { state, dispatch } = useStore();
 
   const [tariffType, setTariffType] = useState<'auto' | 'service'>('auto');

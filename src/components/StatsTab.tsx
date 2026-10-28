@@ -2,7 +2,11 @@ import { useState, useMemo } from 'react';
 import { useStore } from '../store';
 import { calcDurationHours, calcAutoCost, calcServiceHours, calcServiceCost, formatNumber } from '../types';
 
-export default function StatsTab() {
+interface Props {
+  onStatus?: (msg: string) => void;
+}
+
+export default function StatsTab({ onStatus }: Props) {
   const { state } = useStore();
 
   const defaultEnd = new Date().toISOString().split('T')[0];

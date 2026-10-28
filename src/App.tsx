@@ -1,21 +1,24 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { StoreProvider, useStore } from './store';
 import AutoTab from './components/AutoTab';
 import ServicesTab from './components/ServicesTab';
 import ResultsTab from './components/ResultsTab';
 import TariffsTab from './components/TariffsTab';
 import StatsTab from './components/StatsTab';
-import { Car, Wrench, BarChart3, DollarSign, TrendingUp, HelpCircle } from 'lucide-react';
+import { AppState } from './types';
+import { Car, Wrench, BarChart3, DollarSign, TrendingUp, HelpCircle, Save, FolderOpen, FilePlus } from 'lucide-react';
 
 const APP_NAME = 'Учёт автомобилей';
 const VERSION = '1.9.6';
 const COMPANY_NAME = "АО «Логистик-Центр»";
 
 function AppContent() {
-  const { state } = useStore();
+  const { state, dispatch } = useStore();
   const [activeTab, setActiveTab] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showHelp, setShowHelp] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('Готов к работе');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Обновление времени
   useEffect(() => {
@@ -30,10 +33,83 @@ function AppContent() {
         e.preventDefault();
         setShowHelp(true);
       }
+      if (e.ctrlKey && e.key === 's') {
+        e.preventDefault();
+        handleSave();
+      }
+      if (e.ctrlKey && e.key === 'o') {
+        e.preventDefault();
+        handleLoad();
+      }
+      if (e.ctrlKey && e.key === 'n') {
+        e.preventDefault();
+        handleNew();
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [state]);
+
+  const showStatus = (msg: string) => {
+    setStatusMessage(msg);
+    setTimeout(() => setStatusMessage('Готов к работе'), 3000);
+  };
+
+  // Сохранение в файл
+  const handleSave = () => {
+    const data: AppState = {
+      autoRecords: state.autoRecords,
+      serviceRecords: state.serviceRecords,
+      tariffs: state.tariffs,
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const dateStr = new Date().toISOString().split('T')[0];
+    a.download = `car_accounting_${dateStr}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showStatus(`💾 Сохранено: авто — ${state.autoRecords.length}, услуг — ${state.serviceRecords.length}`);
+  };
+
+  // Загрузка из файла
+  const handleLoad = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target?.result as string) as AppState;
+        if (!data.autoRecords || !data.serviceRecords) {
+          alert('Неверный формат файла');
+          return;
+        }
+        dispatch({ type: 'IMPORT_DATA', payload: data });
+        showStatus(`📂 Загружено: авто — ${data.autoRecords.length}, услуг — ${data.serviceRecords.length}`);
+      } catch (err) {
+        alert('Ошибка чтения файла: ' + (err as Error).message);
+      }
+    };
+    reader.readAsText(file);
+    // Сброс input для повторной загрузки того же файла
+    e.target.value = '';
+  };
+
+  // Новый файл
+  const handleNew = () => {
+    if ((state.autoRecords.length > 0 || state.serviceRecords.length > 0) &&
+        !confirm('Все несохранённые данные будут потеряны. Продолжить?')) {
+      return;
+    }
+    dispatch({ type: 'CLEAR_ALL' });
+    showStatus('📄 Создан новый файл');
+  };
 
   const tabs = [
     { name: 'Данные автомобиля', icon: Car, component: AutoTab },
@@ -48,9 +124,18 @@ function AppContent() {
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col">
+      {/* Скрытый input для загрузки файлов */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json"
+        onChange={handleFileSelected}
+        className="hidden"
+      />
+
       {/* Шапка */}
-      <header className="bg-gradient-to-r from-blue-800 to-blue-600 text-white shadow-lg">
-        <div className="max-w-full mx-auto px-4 py-3 flex items-center justify-between">
+      <header className="bg-gradient-to-r from-blue-800 to-blue-600 text-white shadow-lg flex-shrink-0">
+        <div className="max-w-full mx-auto px-4 py-3 flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
               <Car size={24} />
@@ -60,6 +145,32 @@ function AppContent() {
               <p className="text-xs text-blue-200">{COMPANY_NAME}</p>
             </div>
           </div>
+
+          {/* Кнопки управления файлами */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleLoad}
+              className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-sm transition"
+              title="Загрузить из файла (Ctrl+O)"
+            >
+              <FolderOpen size={16} /> Загрузить
+            </button>
+            <button
+              onClick={handleSave}
+              className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-sm transition"
+              title="Сохранить в файл (Ctrl+S)"
+            >
+              <Save size={16} /> Сохранить
+            </button>
+            <button
+              onClick={handleNew}
+              className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-sm transition"
+              title="Новый файл (Ctrl+N)"
+            >
+              <FilePlus size={16} /> Новый
+            </button>
+          </div>
+
           <div className="flex items-center gap-4">
             <div className="text-right text-xs">
               <div className="text-blue-200">Записей: {totalRecords}</div>
@@ -77,7 +188,7 @@ function AppContent() {
       </header>
 
       {/* Вкладки */}
-      <nav className="bg-white border-b shadow-sm">
+      <nav className="bg-white border-b shadow-sm flex-shrink-0">
         <div className="max-w-full mx-auto px-4">
           <div className="flex overflow-x-auto">
             {tabs.map((tab, idx) => {
@@ -103,12 +214,12 @@ function AppContent() {
 
       {/* Содержимое */}
       <main className="flex-1 max-w-full mx-auto px-4 py-4 w-full">
-        <ActiveComponent />
+        <ActiveComponent onStatus={showStatus} />
       </main>
 
-      {/* Строка состояния */}
-      <footer className="bg-white border-t px-4 py-2 flex items-center justify-between text-xs text-gray-500">
-        <span>Готов к работе | Данные хранятся в браузере (localStorage)</span>
+      {/* Строка состояния — всегда внизу */}
+      <footer className="bg-white border-t px-4 py-2 flex items-center justify-between text-xs text-gray-500 flex-shrink-0 sticky bottom-0 z-40 shadow-sm">
+        <span>{statusMessage}</span>
         <span>{currentTime.toLocaleDateString('ru-RU')} {currentTime.toLocaleTimeString('ru-RU')}</span>
       </footer>
 
@@ -125,7 +236,10 @@ function AppContent() {
                 <p className="font-medium mb-2">Горячие клавиши:</p>
                 <ul className="space-y-1 text-xs">
                   <li><kbd className="bg-gray-200 px-1 rounded">F1</kbd> — эта справка</li>
-                  <li><kbd className="bg-gray-200 px-1 rounded">Enter</kbd> — добавить запись (на вкладках авто/услуги)</li>
+                  <li><kbd className="bg-gray-200 px-1 rounded">Ctrl+S</kbd> — сохранить в файл</li>
+                  <li><kbd className="bg-gray-200 px-1 rounded">Ctrl+O</kbd> — загрузить из файла</li>
+                  <li><kbd className="bg-gray-200 px-1 rounded">Ctrl+N</kbd> — новый файл</li>
+                  <li><kbd className="bg-gray-200 px-1 rounded">Enter</kbd> — добавить запись</li>
                 </ul>
               </div>
 
@@ -140,8 +254,13 @@ function AppContent() {
               </div>
 
               <div className="bg-green-50 rounded p-3">
-                <p className="font-medium mb-2">Хранение данных:</p>
-                <p className="text-xs">Все данные сохраняются в localStorage вашего браузера. Для переноса данных между устройствами используйте экспорт/импорт тарифов (JSON).</p>
+                <p className="font-medium mb-2">💡 Подсказки:</p>
+                <ul className="space-y-1 text-xs list-disc list-inside">
+                  <li>Кликните по значению в таблице, чтобы добавить фильтр</li>
+                  <li>Используйте строку поиска для быстрого поиска</li>
+                  <li>Чекбоксы в таблице позволяют выбрать несколько записей</li>
+                  <li>Данные автоматически сохраняются в браузере</li>
+                </ul>
               </div>
 
               <p className="text-xs text-gray-400 mt-4">

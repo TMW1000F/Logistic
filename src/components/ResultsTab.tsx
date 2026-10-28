@@ -3,7 +3,11 @@ import { useStore } from '../store';
 import { calcDurationHours, calcAutoCost, calcServiceHours, calcServiceCost, formatNumber, formatDate } from '../types';
 import * as XLSX from 'xlsx';
 
-export default function ResultsTab() {
+interface Props {
+  onStatus?: (msg: string) => void;
+}
+
+export default function ResultsTab({ onStatus }: Props) {
   const { state } = useStore();
 
   const [mode, setMode] = useState<'auto_only' | 'all' | 'services_only'>('all');

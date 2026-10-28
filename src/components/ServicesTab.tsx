@@ -1,9 +1,14 @@
 import { useState, useMemo } from 'react';
 import { useStore } from '../store';
 import { ServiceRecord, calcServiceHours, calcServiceCost, formatNumber, formatDate, generateId } from '../types';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, CheckSquare, Square } from 'lucide-react';
+import SearchAndTags, { FilterTag } from './SearchAndTags';
 
-export default function ServicesTab() {
+interface Props {
+  onStatus?: (msg: string) => void;
+}
+
+export default function ServicesTab({ onStatus }: Props) {
   const { state, dispatch } = useStore();
 
   // Форма ввода
@@ -17,18 +22,17 @@ export default function ServicesTab() {
   const [useCoefficient, setUseCoefficient] = useState(false);
   const [coefficient, setCoefficient] = useState('1.5');
 
-  // Фильтры
-  const [filterByType, setFilterByType] = useState(false);
-  const [filterByCarrier, setFilterByCarrier] = useState(false);
-  const [filterByDate, setFilterByDate] = useState(false);
-  const [filterDateRange, setFilterDateRange] = useState(false);
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  // Поиск и теги
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterTags, setFilterTags] = useState<FilterTag[]>([]);
+
+  // Множественный выбор
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Группировка
   const [groupBy, setGroupBy] = useState<'none' | 'type'>('none');
 
-  // Получить уникальные значения из тарифов
+  // Уникальные значения из тарифов
   const serviceCategories = useMemo(() => {
     return [...new Set(
       state.tariffs
@@ -55,21 +59,54 @@ export default function ServicesTab() {
   const filteredRecords = useMemo(() => {
     let records = [...state.serviceRecords];
 
-    if (filterByType && serviceType) {
-      records = records.filter(r => r.service_type === serviceType);
+    // Фильтр по тегам
+    for (const tag of filterTags) {
+      if (tag.field === 'service_type') {
+        records = records.filter(r => r.service_type === tag.value);
+      } else if (tag.field === 'carrier') {
+        records = records.filter(r => r.carrier === tag.value);
+      } else if (tag.field === 'date') {
+        records = records.filter(r => r.date === tag.value);
+      }
     }
-    if (filterByCarrier && carrierInput) {
-      records = records.filter(r => r.carrier === carrierInput);
-    }
-    if (filterByDate && date) {
-      records = records.filter(r => r.date === date);
-    }
-    if (filterDateRange && startDate && endDate) {
-      records = records.filter(r => r.date >= startDate && r.date <= endDate);
+
+    // Строковой поиск
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      records = records.filter(r =>
+        r.service_type.toLowerCase().includes(q) ||
+        r.carrier.toLowerCase().includes(q) ||
+        r.date.includes(q) ||
+        formatDate(r.date).includes(q) ||
+        r.payment_type.includes(q)
+      );
     }
 
     return records;
-  }, [state.serviceRecords, filterByType, serviceType, filterByCarrier, carrierInput, filterByDate, date, filterDateRange, startDate, endDate]);
+  }, [state.serviceRecords, filterTags, searchQuery]);
+
+  // Добавление тега
+  const addFilterTag = (field: string, value: string) => {
+    if (!value) return;
+    if (filterTags.some(t => t.field === field && t.value === value)) return;
+    
+    const labels: Record<string, string> = {
+      service_type: 'Тип услуги',
+      carrier: 'Компания',
+      date: 'Дата',
+    };
+    
+    setFilterTags([...filterTags, { field, value, label: labels[field] || field }]);
+  };
+
+  const removeTag = (index: number) => {
+    setFilterTags(filterTags.filter((_, i) => i !== index));
+  };
+
+  const clearAllTags = () => {
+    setFilterTags([]);
+    setSearchQuery('');
+  };
 
   // Группировка
   const displayData = useMemo(() => {
@@ -140,7 +177,7 @@ export default function ServicesTab() {
 
     const tariffInfo = getTariff(serviceType, carrierInput);
     if (!tariffInfo) {
-      alert(`Тариф для "${serviceType}" и "${carrierInput}" не найден. Добавьте тариф во вкладке "Тарифы".`);
+      alert(`Тариф для "${serviceType}" и "${carrierInput}" не найден.`);
       return;
     }
 
@@ -176,178 +213,197 @@ export default function ServicesTab() {
     dispatch({ type: 'ADD_SERVICE_RECORD', payload: record });
     setQuantity(1);
     setUseCoefficient(false);
+    onStatus?.(`✅ Услуга "${serviceType}" добавлена`);
   };
 
   // Удаление
   const handleDelete = (id: string) => {
     if (confirm('Удалить выбранную запись?')) {
       dispatch({ type: 'DELETE_SERVICE_RECORD', payload: id });
+      setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+      onStatus?.('🗑️ Запись удалена');
     }
   };
 
-  // Сброс фильтров
-  const resetFilters = () => {
-    setFilterByType(false);
-    setFilterByCarrier(false);
-    setFilterByDate(false);
-    setFilterDateRange(false);
-    setServiceType('');
-    setCarrierInput('');
+  const handleDeleteSelected = () => {
+    if (selectedIds.size === 0) {
+      alert('Выберите записи для удаления');
+      return;
+    }
+    if (!confirm(`Удалить ${selectedIds.size} записей?`)) return;
+    
+    for (const id of selectedIds) {
+      dispatch({ type: 'DELETE_SERVICE_RECORD', payload: id });
+    }
+    setSelectedIds(new Set());
+    onStatus?.(`🗑️ Удалено записей: ${selectedIds.size}`);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredRecords.length && filteredRecords.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredRecords.map(r => r.id)));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSave();
+    }
   };
 
   return (
     <div className="space-y-4">
-      {/* Верхняя панель */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Ввод услуги */}
-        <div className="bg-white rounded-lg border p-4 space-y-3">
-          <h3 className="font-bold text-sm text-gray-700 border-b pb-2">🔧 Добавление услуги</h3>
-          
-          {/* Тип оплаты */}
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-gray-600">Тип оплаты:</span>
-            <label className="flex items-center gap-1 text-sm">
-              <input type="radio" checked={paymentType === 'hourly'} onChange={() => setPaymentType('hourly')} />
-              Почасовая
-            </label>
-            <label className="flex items-center gap-1 text-sm">
-              <input type="radio" checked={paymentType === 'fixed'} onChange={() => setPaymentType('fixed')} />
-              Фиксированная
-            </label>
-          </div>
+      {/* Sticky форма ввода */}
+      <div className="sticky top-0 z-30 bg-gray-100 pb-2">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Ввод услуги */}
+          <div className="bg-white rounded-lg border p-4 shadow-sm">
+            <h3 className="font-bold text-sm text-gray-700 mb-3">🔧 Добавление услуги</h3>
+            
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-xs text-gray-600">Тип оплаты:</span>
+              <label className="flex items-center gap-1 text-sm">
+                <input type="radio" checked={paymentType === 'hourly'} onChange={() => setPaymentType('hourly')} />
+                Почасовая
+              </label>
+              <label className="flex items-center gap-1 text-sm">
+                <input type="radio" checked={paymentType === 'fixed'} onChange={() => setPaymentType('fixed')} />
+                Фиксированная
+              </label>
+            </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs text-gray-600">Тип услуги:</label>
-              <select value={serviceType} onChange={e => setServiceType(e.target.value)} className="w-full border rounded px-2 py-1 text-sm">
-                <option value="">-- Выберите --</option>
-                {serviceCategories.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-gray-600">Компания:</label>
-              <select value={carrierInput} onChange={e => setCarrierInput(e.target.value)} className="w-full border rounded px-2 py-1 text-sm">
-                <option value="">-- Выберите --</option>
-                {serviceCarriers.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-gray-600">Количество (ед.):</label>
-              <input
-                type="number"
-                min={1}
-                max={1000}
-                value={quantity}
-                onChange={e => setQuantity(parseInt(e.target.value) || 1)}
-                className="w-full border rounded px-2 py-1 text-sm"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-gray-600">Дата:</label>
-              <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full border rounded px-2 py-1 text-sm" />
-            </div>
-          </div>
-
-          {/* Время (только для почасовой) */}
-          {paymentType === 'hourly' && (
-            <div className="bg-gray-50 rounded p-2">
-              <label className="text-xs text-gray-600 font-medium">Время:</label>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-xs">Начало:</span>
-                <input type="time" value={arrival} onChange={e => setArrival(e.target.value)} step="1800" className="border rounded px-2 py-0.5 text-sm" />
-                <span className="text-xs">Окончание:</span>
-                <input type="time" value={departure} onChange={e => setDeparture(e.target.value)} step="1800" className="border rounded px-2 py-0.5 text-sm" />
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              <div>
+                <label className="text-xs text-gray-600">Тип услуги:</label>
+                <select value={serviceType} onChange={e => setServiceType(e.target.value)} className="w-full border rounded px-2 py-1 text-sm">
+                  <option value="">-- Выберите --</option>
+                  {serviceCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-gray-600">Компания:</label>
+                <select value={carrierInput} onChange={e => setCarrierInput(e.target.value)} className="w-full border rounded px-2 py-1 text-sm">
+                  <option value="">-- Выберите --</option>
+                  {serviceCarriers.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-gray-600">Количество:</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={1000}
+                  value={quantity}
+                  onChange={e => setQuantity(parseInt(e.target.value) || 1)}
+                  className="w-full border rounded px-2 py-1 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-600">Дата:</label>
+                <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full border rounded px-2 py-1 text-sm" />
               </div>
             </div>
-          )}
 
-          {/* Коэффициент */}
-          <div className="flex items-center gap-2">
-            <input type="checkbox" checked={useCoefficient} onChange={e => setUseCoefficient(e.target.checked)} id="svc_coef" />
-            <label htmlFor="svc_coef" className="text-xs text-gray-600">Коэффициент:</label>
-            <input
-              type="text"
-              value={coefficient}
-              onChange={e => setCoefficient(e.target.value)}
-              disabled={!useCoefficient}
-              className="w-16 border rounded px-2 py-1 text-sm"
-            />
-          </div>
+            {paymentType === 'hourly' && (
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-xs text-gray-600">Время:</span>
+                <input type="time" value={arrival} onChange={e => setArrival(e.target.value)} step="1800" className="border rounded px-2 py-0.5 text-sm" />
+                <span className="text-xs">—</span>
+                <input type="time" value={departure} onChange={e => setDeparture(e.target.value)} step="1800" className="border rounded px-2 py-0.5 text-sm" />
+              </div>
+            )}
 
-          <button
-            onClick={handleSave}
-            className="flex items-center gap-1 bg-green-600 text-white px-3 py-1.5 rounded text-sm hover:bg-green-700"
-          >
-            <Plus size={14} /> Добавить услугу
-          </button>
+            <div className="flex flex-wrap items-center gap-3 mt-3">
+              <div className="flex items-center gap-2">
+                <input type="checkbox" checked={useCoefficient} onChange={e => setUseCoefficient(e.target.checked)} id="svc_coef" />
+                <label htmlFor="svc_coef" className="text-xs text-gray-600">Коэффициент:</label>
+                <input
+                  type="text"
+                  value={coefficient}
+                  onChange={e => setCoefficient(e.target.value)}
+                  disabled={!useCoefficient}
+                  className="w-16 border rounded px-2 py-0.5 text-sm"
+                />
+              </div>
 
-          {/* Тариф информация */}
-          {serviceType && carrierInput && (
-            <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
-              {getTariff(serviceType, carrierInput) 
-                ? `Тариф: ${formatNumber(getTariff(serviceType, carrierInput)!.price)} ₽/${paymentType === 'hourly' ? 'час' : 'ед.'}` 
-                : '⚠️ Тариф не найден'}
-            </div>
-          )}
-        </div>
+              <button
+                onClick={handleSave}
+                onKeyDown={handleKeyDown}
+                className="flex items-center gap-1 bg-green-600 text-white px-3 py-1.5 rounded text-sm hover:bg-green-700"
+              >
+                <Plus size={14} /> Добавить услугу
+              </button>
 
-        {/* Фильтры */}
-        <div className="bg-white rounded-lg border p-4 space-y-3">
-          <h3 className="font-bold text-sm text-gray-700 border-b pb-2">🔍 Фильтры</h3>
-          
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <input type="checkbox" checked={filterByType} onChange={e => setFilterByType(e.target.checked)} id="sf_type" />
-              <label htmlFor="sf_type" className="text-xs">По типу:</label>
-              <select value={serviceType} onChange={e => setServiceType(e.target.value)} className="flex-1 border rounded px-2 py-0.5 text-sm">
-                <option value="">Все</option>
-                {serviceCategories.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-            <div className="flex items-center gap-2">
-              <input type="checkbox" checked={filterByCarrier} onChange={e => setFilterByCarrier(e.target.checked)} id="sf_carr" />
-              <label htmlFor="sf_carr" className="text-xs">По компании:</label>
-              <select value={carrierInput} onChange={e => setCarrierInput(e.target.value)} className="flex-1 border rounded px-2 py-0.5 text-sm">
-                <option value="">Все</option>
-                {serviceCarriers.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-            <div className="flex items-center gap-2">
-              <input type="checkbox" checked={filterByDate} onChange={e => setFilterByDate(e.target.checked)} id="sf_date" />
-              <label htmlFor="sf_date" className="text-xs">По дате:</label>
-              <input type="date" value={date} onChange={e => setDate(e.target.value)} className="border rounded px-2 py-0.5 text-sm" />
-            </div>
-            <div className="flex items-center gap-2">
-              <input type="checkbox" checked={filterDateRange} onChange={e => setFilterDateRange(e.target.checked)} id="sf_range" />
-              <label htmlFor="sf_range" className="text-xs">Интервал:</label>
-              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border rounded px-2 py-0.5 text-sm" />
-              <span className="text-xs">—</span>
-              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border rounded px-2 py-0.5 text-sm" />
+              {serviceType && carrierInput && (
+                <span className="text-xs text-gray-500">
+                  {getTariff(serviceType, carrierInput) 
+                    ? `Тариф: ${formatNumber(getTariff(serviceType, carrierInput)!.price)} ₽/${paymentType === 'hourly' ? 'час' : 'ед.'}` 
+                    : '⚠️ Не найден'}
+                </span>
+              )}
             </div>
           </div>
 
-          <button onClick={resetFilters} className="w-full bg-gray-200 text-gray-700 px-3 py-1.5 rounded text-sm hover:bg-gray-300">
-            Сбросить все фильтры
-          </button>
-        </div>
+          {/* Управление */}
+          <div className="bg-white rounded-lg border p-4 shadow-sm">
+            <h3 className="font-bold text-sm text-gray-700 mb-3">⚙️ Управление</h3>
+            
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-gray-600">Группировка:</span>
+              <button onClick={() => setGroupBy('none')} className={`px-2 py-1 text-xs rounded ${groupBy === 'none' ? 'bg-green-600 text-white' : 'bg-gray-200'}`}>Без группировки</button>
+              <button onClick={() => setGroupBy('type')} className={`px-2 py-1 text-xs rounded ${groupBy === 'type' ? 'bg-green-600 text-white' : 'bg-gray-200'}`}>По типу</button>
+            </div>
 
-        {/* Быстрая информация */}
-        <div className="bg-white rounded-lg border p-4 space-y-3">
-          <h3 className="font-bold text-sm text-gray-700 border-b pb-2">ℹ️ Информация</h3>
-          <div className="text-sm space-y-2">
-            <p>Всего услуг в базе: <b>{state.serviceRecords.length}</b></p>
-            <p>Отображается: <b>{filteredRecords.length}</b></p>
-            <p>Уникальных типов: <b>{new Set(filteredRecords.map(r => r.service_type)).size}</b></p>
+            {selectedIds.size > 0 && (
+              <div className="mt-3 flex items-center gap-2">
+                <span className="text-xs text-gray-600">Выбрано: {selectedIds.size}</span>
+                <button
+                  onClick={handleDeleteSelected}
+                  className="flex items-center gap-1 bg-red-600 text-white px-3 py-1 rounded text-xs hover:bg-red-700"
+                >
+                  <Trash2 size={12} /> Удалить выбранные
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
+      {/* Поиск и теги */}
+      <SearchAndTags
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        tags={filterTags}
+        onRemoveTag={removeTag}
+        onClearAll={clearAllTags}
+        placeholder="🔍 Поиск по типу услуги, компании, дате..."
+      />
+
       {/* Таблица */}
       <div className="bg-white rounded-lg border overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto max-h-[60vh]">
           <table className="w-full text-sm">
-            <thead className="bg-gray-100">
+            <thead className="bg-gray-100 sticky top-0 z-10">
               <tr>
+                <th className="px-2 py-2 text-center w-8">
+                  <button onClick={toggleSelectAll}>
+                    {filteredRecords.length > 0 && selectedIds.size === filteredRecords.length ? (
+                      <CheckSquare size={16} className="text-green-600" />
+                    ) : (
+                      <Square size={16} className="text-gray-400" />
+                    )}
+                  </button>
+                </th>
                 <th className="px-2 py-2 text-left text-xs font-medium text-gray-600">Тип услуги</th>
                 <th className="px-2 py-2 text-left text-xs font-medium text-gray-600">Компания</th>
                 <th className="px-2 py-2 text-center text-xs font-medium text-gray-600">Кол-во</th>
@@ -363,16 +419,46 @@ export default function ServicesTab() {
             </thead>
             <tbody>
               {displayData.map((row, idx) => (
-                <tr key={idx} className={`border-t hover:bg-gray-50 ${row.has_high_tariff ? 'bg-red-50' : ''} ${row.is_group ? 'bg-blue-50 font-semibold' : ''}`}>
-                  <td className="px-2 py-1.5">{row.service_type}</td>
-                  <td className="px-2 py-1.5">{row.carrier}</td>
+                <tr
+                  key={idx}
+                  className={`border-t hover:bg-gray-50 ${row.has_high_tariff ? 'bg-red-50' : ''} ${row.is_group ? 'bg-green-50 font-semibold' : ''} ${selectedIds.has(row.id) ? 'bg-green-100' : ''}`}
+                >
+                  <td className="px-2 py-1.5 text-center">
+                    {!row.is_group && (
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(row.id)}
+                        onChange={() => toggleSelect(row.id)}
+                      />
+                    )}
+                  </td>
+                  <td
+                    className="px-2 py-1.5 cursor-pointer hover:bg-green-100 hover:underline"
+                    onClick={() => !row.is_group && addFilterTag('service_type', row.service_type)}
+                    title="Клик — добавить фильтр"
+                  >
+                    {row.service_type}
+                  </td>
+                  <td
+                    className="px-2 py-1.5 cursor-pointer hover:bg-green-100 hover:underline"
+                    onClick={() => !row.is_group && addFilterTag('carrier', row.carrier)}
+                    title="Клик — добавить фильтр"
+                  >
+                    {row.carrier}
+                  </td>
                   <td className="px-2 py-1.5 text-center">{row.is_group ? formatNumber(row.quantity) : row.quantity}</td>
                   <td className="px-2 py-1.5 text-center">{row.payment_type === 'hourly' ? 'Почасовая' : row.payment_type === 'fixed' ? 'Фиксированная' : '-'}</td>
                   <td className="px-2 py-1.5 text-center">{row.time}</td>
                   <td className="px-2 py-1.5 text-right">{row.hours > 0 ? formatNumber(row.hours) : '-'}</td>
                   <td className="px-2 py-1.5 text-right font-medium">{formatNumber(row.cost)}</td>
                   <td className="px-2 py-1.5 text-right">{row.tariff ? formatNumber(row.tariff) : '-'}</td>
-                  <td className="px-2 py-1.5 text-center">{row.date ? formatDate(row.date) : (row.is_group ? `${(row as any).group_count} заказов` : '-')}</td>
+                  <td
+                    className="px-2 py-1.5 text-center cursor-pointer hover:bg-green-100 hover:underline"
+                    onClick={() => !row.is_group && addFilterTag('date', row.date)}
+                    title="Клик — добавить фильтр"
+                  >
+                    {row.date ? formatDate(row.date) : (row.is_group ? `${(row as any).group_count} заказов` : '-')}
+                  </td>
                   <td className="px-2 py-1.5 text-center">{row.has_high_tariff ? `×${row.coefficient}` : '-'}</td>
                   <td className="px-2 py-1.5 text-center">
                     {!row.is_group && (
@@ -385,7 +471,7 @@ export default function ServicesTab() {
               ))}
               {displayData.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="px-4 py-8 text-center text-gray-400">Нет данных</td>
+                  <td colSpan={12} className="px-4 py-8 text-center text-gray-400">Нет данных</td>
                 </tr>
               )}
             </tbody>
@@ -396,11 +482,6 @@ export default function ServicesTab() {
         <div className="border-t bg-gray-50 px-4 py-2 flex flex-wrap items-center gap-4">
           <span className="text-sm">Услуг: <b>{totals.count}</b></span>
           <span className="text-sm text-red-600 font-bold">Сумма: {formatNumber(totals.totalCost)} ₽</span>
-          
-          <div className="ml-auto flex gap-2">
-            <button onClick={() => setGroupBy('none')} className={`px-2 py-1 text-xs rounded ${groupBy === 'none' ? 'bg-green-600 text-white' : 'bg-gray-200'}`}>Без группировки</button>
-            <button onClick={() => setGroupBy('type')} className={`px-2 py-1 text-xs rounded ${groupBy === 'type' ? 'bg-green-600 text-white' : 'bg-gray-200'}`}>По типу</button>
-          </div>
         </div>
       </div>
     </div>
