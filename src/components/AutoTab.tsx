@@ -382,23 +382,26 @@ export default function AutoTab({ onStatus }: Props) {
         </div>
       </div>
 
-      {/* Поиск и теги */}
-      <SearchAndTags
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        tags={filterTags}
-        onRemoveTag={removeTag}
-        onClearAll={clearAllTags}
-        placeholder="🔍 Поиск по номеру, типу, перевозчику, дате..."
-      />
+      {/* Контейнер: поиск + таблица + итоги (занимает всё оставшееся место) */}
+      <div className="flex flex-col bg-white rounded-lg border overflow-hidden" style={{ height: 'calc(100vh - 360px)', minHeight: '300px' }}>
+        {/* Поиск и теги — закреплено сверху, не прокручивается */}
+        <div className="flex-shrink-0 border-b bg-white p-3">
+          <SearchAndTags
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            tags={filterTags}
+            onRemoveTag={removeTag}
+            onClearAll={clearAllTags}
+            placeholder="🔍 Поиск по номеру, типу, перевозчику, дате..."
+          />
+        </div>
 
-      {/* Таблица */}
-      <div className="bg-white rounded-lg border overflow-hidden">
-        <div className="overflow-x-auto max-h-[60vh]">
+        {/* Таблица — прокручивается только она */}
+        <div className="flex-1 overflow-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-100 sticky top-0 z-10">
               <tr>
-                <th className="px-2 py-2 text-center w-8">
+                <th className="px-2 py-2 text-center w-8 sticky left-0 bg-gray-100 z-20">
                   <button onClick={toggleSelectAll} title="Выбрать все">
                     {filteredRecords.length > 0 && selectedIds.size === filteredRecords.length ? (
                       <CheckSquare size={16} className="text-blue-600" />
@@ -426,7 +429,7 @@ export default function AutoTab({ onStatus }: Props) {
                   key={idx}
                   className={`border-t hover:bg-gray-50 ${row.has_high_tariff ? 'bg-red-50' : ''} ${row.is_group ? 'bg-blue-50 font-semibold' : ''} ${selectedIds.has(row.id) ? 'bg-blue-100' : ''}`}
                 >
-                  <td className="px-2 py-1.5 text-center">
+                  <td className="px-2 py-1.5 text-center sticky left-0 bg-inherit">
                     {!row.is_group && (
                       <input
                         type="checkbox"
@@ -487,8 +490,8 @@ export default function AutoTab({ onStatus }: Props) {
           </table>
         </div>
 
-        {/* Итоги */}
-        <div className="border-t bg-gray-50 px-4 py-2 flex flex-wrap items-center gap-4">
+        {/* Итоги — закреплено снизу, не прокручивается */}
+        <div className="flex-shrink-0 border-t bg-gray-50 px-4 py-2 flex flex-wrap items-center gap-4 shadow-[0_-2px_4px_rgba(0,0,0,0.05)]">
           <span className="text-sm">Строк: <b>{totals.count}</b></span>
           <span className="text-sm">Часы: <b>{formatNumber(totals.totalHours)}</b></span>
           <span className="text-sm text-red-600 font-bold">Сумма: {formatNumber(totals.totalCost)} ₽</span>

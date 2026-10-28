@@ -18,7 +18,7 @@ interface Props {
 
 export default function SearchAndTags({ searchQuery, onSearchChange, tags, onRemoveTag, onClearAll, placeholder }: Props) {
   return (
-    <div className="bg-white rounded-lg border p-3 space-y-2">
+    <div className="space-y-2">
       {/* Строка поиска */}
       <div className="relative">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
