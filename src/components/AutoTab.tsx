@@ -372,6 +372,11 @@ export default function AutoTab({ onStatus, darkMode = false }: Props) {
               className={`border rounded px-1 py-1 text-xs w-32 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
             />
           </div>
+          {carType && carrier && (
+            <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              Тариф: {getTariff(carType, carrier) !== null ? `${formatNumber(getTariff(carType, carrier)!)} ₽/ч` : '⚠️ Не найден'}
+            </span>
+          )}
           {selectedIds.size > 0 && (
             <button
               onClick={handleDeleteSelected}
@@ -386,11 +391,6 @@ export default function AutoTab({ onStatus, darkMode = false }: Props) {
           >
             <Plus size={14} /> Добавить
           </button>
-          {carType && carrier && (
-            <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-              Тариф: {getTariff(carType, carrier) !== null ? `${formatNumber(getTariff(carType, carrier)!)} ₽/ч` : '⚠️ Не найден'}
-            </span>
-          )}
         </div>
       </div>
 
