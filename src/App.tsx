@@ -6,7 +6,7 @@ import ResultsTab from './components/ResultsTab';
 import TariffsTab from './components/TariffsTab';
 import StatsTab from './components/StatsTab';
 import { AppState } from './types';
-import { Car, Wrench, BarChart3, DollarSign, TrendingUp, HelpCircle, Save, FolderOpen, FilePlus } from 'lucide-react';
+import { Car, Wrench, BarChart3, DollarSign, TrendingUp, HelpCircle, Save, FolderOpen, FilePlus, Sun, Moon } from 'lucide-react';
 
 const APP_NAME = 'Учёт автомобилей';
 const VERSION = '1.9.6';
@@ -18,7 +18,25 @@ function AppContent() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showHelp, setShowHelp] = useState(false);
   const [statusMessage, setStatusMessage] = useState('Готов к работе');
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem('darkMode');
+    return saved === 'true';
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Применение темы
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+      document.body.style.backgroundColor = '#1a1a1a';
+      document.body.style.color = '#e5e5e5';
+    } else {
+      document.documentElement.classList.remove('dark');
+      document.body.style.backgroundColor = '#f3f4f6';
+      document.body.style.color = '#1f2937';
+    }
+    localStorage.setItem('darkMode', String(darkMode));
+  }, [darkMode]);
 
   // Обновление времени
   useEffect(() => {
@@ -149,6 +167,13 @@ function AppContent() {
           {/* Кнопки управления файлами */}
           <div className="flex items-center gap-2">
             <button
+              onClick={() => setDarkMode(!darkMode)}
+              className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-sm transition"
+              title={darkMode ? 'Светлая тема' : 'Тёмная тема'}
+            >
+              {darkMode ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+            <button
               onClick={handleLoad}
               className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-sm transition"
               title="Загрузить из файла (Ctrl+O)"
@@ -212,13 +237,13 @@ function AppContent() {
         </div>
       </nav>
 
-      {/* Содержимое */}
-      <main className="flex-1 max-w-full mx-auto px-4 py-4 w-full">
-        <ActiveComponent onStatus={showStatus} />
+      {/* Содержимое — занимает всё оставшееся место */}
+      <main className="flex-1 max-w-full mx-auto px-4 py-4 w-full flex flex-col min-h-0">
+        <ActiveComponent onStatus={showStatus} darkMode={darkMode} />
       </main>
 
       {/* Строка состояния — всегда внизу */}
-      <footer className="bg-white border-t px-4 py-2 flex items-center justify-between text-xs text-gray-500 flex-shrink-0 sticky bottom-0 z-40 shadow-sm">
+      <footer className={`border-t px-4 py-2 flex items-center justify-between text-xs flex-shrink-0 ${darkMode ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-white border-gray-200 text-gray-500'}`}>
         <span>{statusMessage}</span>
         <span>{currentTime.toLocaleDateString('ru-RU')} {currentTime.toLocaleTimeString('ru-RU')}</span>
       </footer>

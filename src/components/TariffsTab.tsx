@@ -5,9 +5,10 @@ import { Save, Edit, Trash2, Download, Upload } from 'lucide-react';
 
 interface Props {
   onStatus?: (msg: string) => void;
+  darkMode?: boolean;
 }
 
-export default function TariffsTab({ onStatus }: Props) {
+export default function TariffsTab({ onStatus, darkMode = false }: Props) {
   const { state, dispatch } = useStore();
 
   const [tariffType, setTariffType] = useState<'auto' | 'service'>('auto');

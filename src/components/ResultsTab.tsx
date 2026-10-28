@@ -5,9 +5,10 @@ import * as XLSX from 'xlsx';
 
 interface Props {
   onStatus?: (msg: string) => void;
+  darkMode?: boolean;
 }
 
-export default function ResultsTab({ onStatus }: Props) {
+export default function ResultsTab({ onStatus, darkMode = false }: Props) {
   const { state } = useStore();
 
   const [mode, setMode] = useState<'auto_only' | 'all' | 'services_only'>('all');

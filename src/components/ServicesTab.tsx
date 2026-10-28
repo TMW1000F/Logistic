@@ -6,9 +6,10 @@ import SearchAndTags, { FilterTag } from './SearchAndTags';
 
 interface Props {
   onStatus?: (msg: string) => void;
+  darkMode?: boolean;
 }
 
-export default function ServicesTab({ onStatus }: Props) {
+export default function ServicesTab({ onStatus, darkMode = false }: Props) {
   const { state, dispatch } = useStore();
 
   // Форма ввода
@@ -25,6 +26,11 @@ export default function ServicesTab({ onStatus }: Props) {
   // Поиск и теги
   const [searchQuery, setSearchQuery] = useState('');
   const [filterTags, setFilterTags] = useState<FilterTag[]>([]);
+
+  // Фильтр по интервалу дат
+  const [dateRangeEnabled, setDateRangeEnabled] = useState(false);
+  const [dateRangeStart, setDateRangeStart] = useState(new Date().toISOString().split('T')[0]);
+  const [dateRangeEnd, setDateRangeEnd] = useState(new Date().toISOString().split('T')[0]);
 
   // Множественный выбор
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -82,8 +88,13 @@ export default function ServicesTab({ onStatus }: Props) {
       );
     }
 
+    // Фильтр по интервалу дат
+    if (dateRangeEnabled && dateRangeStart && dateRangeEnd) {
+      records = records.filter(r => r.date >= dateRangeStart && r.date <= dateRangeEnd);
+    }
+
     return records;
-  }, [state.serviceRecords, filterTags, searchQuery]);
+  }, [state.serviceRecords, filterTags, searchQuery, dateRangeEnabled, dateRangeStart, dateRangeEnd]);
 
   // Добавление тега
   const addFilterTag = (field: string, value: string) => {
@@ -262,127 +273,90 @@ export default function ServicesTab({ onStatus }: Props) {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col flex-1 min-h-0">
       {/* Sticky форма ввода */}
-      <div className="sticky top-0 z-30 bg-gray-100 pb-2">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Ввод услуги */}
-          <div className="bg-white rounded-lg border p-4 shadow-sm">
-            <h3 className="font-bold text-sm text-gray-700 mb-3">🔧 Добавление услуги</h3>
-            
-            <div className="flex items-center gap-3 mb-3">
-              <span className="text-xs text-gray-600">Тип оплаты:</span>
-              <label className="flex items-center gap-1 text-sm">
-                <input type="radio" checked={paymentType === 'hourly'} onChange={() => setPaymentType('hourly')} />
-                Почасовая
-              </label>
-              <label className="flex items-center gap-1 text-sm">
-                <input type="radio" checked={paymentType === 'fixed'} onChange={() => setPaymentType('fixed')} />
-                Фиксированная
-              </label>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              <div>
-                <label className="text-xs text-gray-600">Тип услуги:</label>
-                <select value={serviceType} onChange={e => setServiceType(e.target.value)} className="w-full border rounded px-2 py-1 text-sm">
-                  <option value="">-- Выберите --</option>
-                  {serviceCategories.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-gray-600">Компания:</label>
-                <select value={carrierInput} onChange={e => setCarrierInput(e.target.value)} className="w-full border rounded px-2 py-1 text-sm">
-                  <option value="">-- Выберите --</option>
-                  {serviceCarriers.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-gray-600">Количество:</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={1000}
-                  value={quantity}
-                  onChange={e => setQuantity(parseInt(e.target.value) || 1)}
-                  className="w-full border rounded px-2 py-1 text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-600">Дата:</label>
-                <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full border rounded px-2 py-1 text-sm" />
-              </div>
-            </div>
-
-            {paymentType === 'hourly' && (
-              <div className="flex items-center gap-2 mt-2">
-                <span className="text-xs text-gray-600">Время:</span>
-                <input type="time" value={arrival} onChange={e => setArrival(e.target.value)} step="1800" className="border rounded px-2 py-0.5 text-sm" />
-                <span className="text-xs">—</span>
-                <input type="time" value={departure} onChange={e => setDeparture(e.target.value)} step="1800" className="border rounded px-2 py-0.5 text-sm" />
-              </div>
-            )}
-
-            <div className="flex flex-wrap items-center gap-3 mt-3">
-              <div className="flex items-center gap-2">
-                <input type="checkbox" checked={useCoefficient} onChange={e => setUseCoefficient(e.target.checked)} id="svc_coef" />
-                <label htmlFor="svc_coef" className="text-xs text-gray-600">Коэффициент:</label>
-                <input
-                  type="text"
-                  value={coefficient}
-                  onChange={e => setCoefficient(e.target.value)}
-                  disabled={!useCoefficient}
-                  className="w-16 border rounded px-2 py-0.5 text-sm"
-                />
-              </div>
-
-              <button
-                onClick={handleSave}
-                onKeyDown={handleKeyDown}
-                className="flex items-center gap-1 bg-green-600 text-white px-3 py-1.5 rounded text-sm hover:bg-green-700"
-              >
-                <Plus size={14} /> Добавить услугу
-              </button>
-
-              {serviceType && carrierInput && (
-                <span className="text-xs text-gray-500">
-                  {getTariff(serviceType, carrierInput) 
-                    ? `Тариф: ${formatNumber(getTariff(serviceType, carrierInput)!.price)} ₽/${paymentType === 'hourly' ? 'час' : 'ед.'}` 
-                    : '⚠️ Не найден'}
-                </span>
-              )}
-            </div>
+      <div className={`flex-shrink-0 rounded-lg border p-3 mb-2 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+        {/* Строка 1: Тип услуги, Компания, Количество, Дата */}
+        <div className="grid grid-cols-4 gap-2 mb-2">
+          <div>
+            <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Тип услуги:</label>
+            <select value={serviceType} onChange={e => setServiceType(e.target.value)} className={`w-full border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+              <option value="">-- Выберите --</option>
+              {serviceCategories.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
           </div>
-
-          {/* Управление */}
-          <div className="bg-white rounded-lg border p-4 shadow-sm">
-            <h3 className="font-bold text-sm text-gray-700 mb-3">⚙️ Управление</h3>
-            
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-gray-600">Группировка:</span>
-              <button onClick={() => setGroupBy('none')} className={`px-2 py-1 text-xs rounded ${groupBy === 'none' ? 'bg-green-600 text-white' : 'bg-gray-200'}`}>Без группировки</button>
-              <button onClick={() => setGroupBy('type')} className={`px-2 py-1 text-xs rounded ${groupBy === 'type' ? 'bg-green-600 text-white' : 'bg-gray-200'}`}>По типу</button>
-            </div>
-
-            {selectedIds.size > 0 && (
-              <div className="mt-3 flex items-center gap-2">
-                <span className="text-xs text-gray-600">Выбрано: {selectedIds.size}</span>
-                <button
-                  onClick={handleDeleteSelected}
-                  className="flex items-center gap-1 bg-red-600 text-white px-3 py-1 rounded text-xs hover:bg-red-700"
-                >
-                  <Trash2 size={12} /> Удалить выбранные
-                </button>
-              </div>
-            )}
+          <div>
+            <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Компания:</label>
+            <select value={carrierInput} onChange={e => setCarrierInput(e.target.value)} className={`w-full border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+              <option value="">-- Выберите --</option>
+              {serviceCarriers.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
           </div>
+          <div>
+            <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Количество:</label>
+            <input type="number" min={1} max={1000} value={quantity} onChange={e => setQuantity(parseInt(e.target.value) || 1)} className={`w-full border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+          </div>
+          <div>
+            <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Дата:</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} className={`w-full border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+          </div>
+        </div>
+
+        {/* Строка 2: Тип оплаты, Время, Коэффициент, Интервал, кнопки */}
+        <div className="flex flex-wrap items-end gap-2">
+          <div className={`flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+            <span className="text-xs">Оплата:</span>
+            <label className="flex items-center gap-1 text-xs">
+              <input type="radio" checked={paymentType === 'hourly'} onChange={() => setPaymentType('hourly')} /> Почасовая
+            </label>
+            <label className="flex items-center gap-1 text-xs">
+              <input type="radio" checked={paymentType === 'fixed'} onChange={() => setPaymentType('fixed')} /> Фикс.
+            </label>
+          </div>
+          {paymentType === 'hourly' && (
+            <>
+              <div>
+                <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Начало:</label>
+                <input type="time" value={arrival} onChange={e => setArrival(e.target.value)} step="1800" className={`border rounded px-2 py-1 text-sm w-28 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+              </div>
+              <div>
+                <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Окончание:</label>
+                <input type="time" value={departure} onChange={e => setDeparture(e.target.value)} step="1800" className={`border rounded px-2 py-1 text-sm w-28 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+              </div>
+            </>
+          )}
+          <div className="flex items-center gap-1">
+            <input type="checkbox" checked={useCoefficient} onChange={e => setUseCoefficient(e.target.checked)} id="svc_coef" />
+            <label htmlFor="svc_coef" className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Коэф.:</label>
+            <input type="text" value={coefficient} onChange={e => setCoefficient(e.target.value)} disabled={!useCoefficient} className={`w-14 border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+          </div>
+          <div className="flex items-center gap-1 border-l pl-2 ml-1">
+            <input type="checkbox" checked={dateRangeEnabled} onChange={e => setDateRangeEnabled(e.target.checked)} id="svc_date_range" />
+            <label htmlFor="svc_date_range" className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Интервал:</label>
+            <input type="date" value={dateRangeStart} onChange={e => setDateRangeStart(e.target.value)} disabled={!dateRangeEnabled} className={`border rounded px-1 py-1 text-xs w-32 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+            <span className="text-xs">—</span>
+            <input type="date" value={dateRangeEnd} onChange={e => setDateRangeEnd(e.target.value)} disabled={!dateRangeEnabled} className={`border rounded px-1 py-1 text-xs w-32 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+          </div>
+          <button onClick={handleSave} onKeyDown={handleKeyDown} className="flex items-center gap-1 bg-green-600 text-white px-3 py-1.5 rounded text-sm hover:bg-green-700">
+            <Plus size={14} /> Добавить
+          </button>
+          {selectedIds.size > 0 && (
+            <button onClick={handleDeleteSelected} className="flex items-center gap-1 bg-red-600 text-white px-3 py-1.5 rounded text-sm hover:bg-red-700">
+              <Trash2 size={14} /> Удалить ({selectedIds.size})
+            </button>
+          )}
+          {serviceType && carrierInput && (
+            <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              {getTariff(serviceType, carrierInput) ? `Тариф: ${formatNumber(getTariff(serviceType, carrierInput)!.price)} ₽/${paymentType === 'hourly' ? 'час' : 'ед.'}` : '⚠️ Не найден'}
+            </span>
+          )}
         </div>
       </div>
 
       {/* Контейнер: поиск + таблица + итоги */}
-      <div className="flex flex-col bg-white rounded-lg border overflow-hidden" style={{ height: 'calc(100vh - 360px)', minHeight: '300px' }}>
-        {/* Поиск и теги — закреплено сверху, не прокручивается */}
-        <div className="flex-shrink-0 border-b bg-white p-3">
+      <div className={`flex flex-col flex-1 min-h-0 rounded-lg border overflow-hidden ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+        {/* Поиск и теги */}
+        <div className={`flex-shrink-0 border-b p-3 ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
           <SearchAndTags
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
@@ -390,76 +364,57 @@ export default function ServicesTab({ onStatus }: Props) {
             onRemoveTag={removeTag}
             onClearAll={clearAllTags}
             placeholder="🔍 Поиск по типу услуги, компании, дате..."
+            darkMode={darkMode}
           />
         </div>
 
         {/* Таблица — прокручивается только она */}
         <div className="flex-1 overflow-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-100 sticky top-0 z-10">
+            <thead className={`sticky top-0 z-10 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
               <tr>
-                <th className="px-2 py-2 text-center w-8 sticky left-0 bg-gray-100 z-20">
+                <th className={`px-2 py-2 text-center w-8 sticky left-0 z-20 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
                   <button onClick={toggleSelectAll}>
                     {filteredRecords.length > 0 && selectedIds.size === filteredRecords.length ? (
                       <CheckSquare size={16} className="text-green-600" />
                     ) : (
-                      <Square size={16} className="text-gray-400" />
+                      <Square size={16} className={darkMode ? 'text-gray-500' : 'text-gray-400'} />
                     )}
                   </button>
                 </th>
-                <th className="px-2 py-2 text-left text-xs font-medium text-gray-600">Тип услуги</th>
-                <th className="px-2 py-2 text-left text-xs font-medium text-gray-600">Компания</th>
-                <th className="px-2 py-2 text-center text-xs font-medium text-gray-600">Кол-во</th>
-                <th className="px-2 py-2 text-center text-xs font-medium text-gray-600">Тип оплаты</th>
-                <th className="px-2 py-2 text-center text-xs font-medium text-gray-600">Время</th>
-                <th className="px-2 py-2 text-right text-xs font-medium text-gray-600">Часы</th>
-                <th className="px-2 py-2 text-right text-xs font-medium text-gray-600">Стоимость</th>
-                <th className="px-2 py-2 text-right text-xs font-medium text-gray-600">Тариф</th>
-                <th className="px-2 py-2 text-center text-xs font-medium text-gray-600">Дата</th>
-                <th className="px-2 py-2 text-center text-xs font-medium text-gray-600">Коэф.</th>
-                <th className="px-2 py-2 text-center text-xs font-medium text-gray-600">⚙️</th>
+                <th className={`px-2 py-2 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Тип услуги</th>
+                <th className={`px-2 py-2 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Компания</th>
+                <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Кол-во</th>
+                <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Тип оплаты</th>
+                <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Время</th>
+                <th className={`px-2 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Часы</th>
+                <th className={`px-2 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Стоимость</th>
+                <th className={`px-2 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Тариф</th>
+                <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Дата</th>
+                <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Коэф.</th>
+                <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>⚙️</th>
               </tr>
             </thead>
             <tbody>
               {displayData.map((row, idx) => (
                 <tr
                   key={idx}
-                  className={`border-t hover:bg-gray-50 ${row.has_high_tariff ? 'bg-red-50' : ''} ${row.is_group ? 'bg-green-50 font-semibold' : ''} ${selectedIds.has(row.id) ? 'bg-green-100' : ''}`}
+                  className={`border-t ${darkMode ? 'border-gray-700 hover:bg-gray-700' : 'hover:bg-gray-50'} ${row.has_high_tariff ? (darkMode ? 'bg-red-900/30' : 'bg-red-50') : ''} ${row.is_group ? (darkMode ? 'bg-green-900/30 font-semibold' : 'bg-green-50 font-semibold') : ''} ${selectedIds.has(row.id) ? (darkMode ? 'bg-green-900/50' : 'bg-green-100') : ''}`}
                 >
                   <td className="px-2 py-1.5 text-center sticky left-0 bg-inherit">
                     {!row.is_group && (
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(row.id)}
-                        onChange={() => toggleSelect(row.id)}
-                      />
+                      <input type="checkbox" checked={selectedIds.has(row.id)} onChange={() => toggleSelect(row.id)} />
                     )}
                   </td>
-                  <td
-                    className="px-2 py-1.5 cursor-pointer hover:bg-green-100 hover:underline"
-                    onClick={() => !row.is_group && addFilterTag('service_type', row.service_type)}
-                    title="Клик — добавить фильтр"
-                  >
-                    {row.service_type}
-                  </td>
-                  <td
-                    className="px-2 py-1.5 cursor-pointer hover:bg-green-100 hover:underline"
-                    onClick={() => !row.is_group && addFilterTag('carrier', row.carrier)}
-                    title="Клик — добавить фильтр"
-                  >
-                    {row.carrier}
-                  </td>
+                  <td className={`px-2 py-1.5 cursor-pointer ${darkMode ? 'hover:bg-green-800' : 'hover:bg-green-100'} hover:underline`} onClick={() => !row.is_group && addFilterTag('service_type', row.service_type)} title="Клик — добавить фильтр">{row.service_type}</td>
+                  <td className={`px-2 py-1.5 cursor-pointer ${darkMode ? 'hover:bg-green-800' : 'hover:bg-green-100'} hover:underline`} onClick={() => !row.is_group && addFilterTag('carrier', row.carrier)} title="Клик — добавить фильтр">{row.carrier}</td>
                   <td className="px-2 py-1.5 text-center">{row.is_group ? formatNumber(row.quantity) : row.quantity}</td>
                   <td className="px-2 py-1.5 text-center">{row.payment_type === 'hourly' ? 'Почасовая' : row.payment_type === 'fixed' ? 'Фиксированная' : '-'}</td>
                   <td className="px-2 py-1.5 text-center">{row.time}</td>
                   <td className="px-2 py-1.5 text-right">{row.hours > 0 ? formatNumber(row.hours) : '-'}</td>
                   <td className="px-2 py-1.5 text-right font-medium">{formatNumber(row.cost)}</td>
                   <td className="px-2 py-1.5 text-right">{row.tariff ? formatNumber(row.tariff) : '-'}</td>
-                  <td
-                    className="px-2 py-1.5 text-center cursor-pointer hover:bg-green-100 hover:underline"
-                    onClick={() => !row.is_group && addFilterTag('date', row.date)}
-                    title="Клик — добавить фильтр"
-                  >
+                  <td className={`px-2 py-1.5 text-center cursor-pointer ${darkMode ? 'hover:bg-green-800' : 'hover:bg-green-100'} hover:underline`} onClick={() => !row.is_group && addFilterTag('date', row.date)} title="Клик — добавить фильтр">
                     {row.date ? formatDate(row.date) : (row.is_group ? `${(row as any).group_count} заказов` : '-')}
                   </td>
                   <td className="px-2 py-1.5 text-center">{row.has_high_tariff ? `×${row.coefficient}` : '-'}</td>
@@ -474,17 +429,23 @@ export default function ServicesTab({ onStatus }: Props) {
               ))}
               {displayData.length === 0 && (
                 <tr>
-                  <td colSpan={12} className="px-4 py-8 text-center text-gray-400">Нет данных</td>
+                  <td colSpan={12} className={`px-4 py-8 text-center ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Нет данных</td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
 
-        {/* Итоги — закреплено снизу, не прокручивается */}
-        <div className="flex-shrink-0 border-t bg-gray-50 px-4 py-2 flex flex-wrap items-center gap-4 shadow-[0_-2px_4px_rgba(0,0,0,0.05)]">
-          <span className="text-sm">Услуг: <b>{totals.count}</b></span>
+        {/* Итоги — закреплено снизу, с группировкой */}
+        <div className={`flex-shrink-0 border-t px-4 py-2 flex flex-wrap items-center gap-4 shadow-[0_-2px_4px_rgba(0,0,0,0.05)] ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gray-50'}`}>
+          <span className={`text-sm ${darkMode ? 'text-gray-300' : ''}`}>Услуг: <b>{totals.count}</b></span>
           <span className="text-sm text-red-600 font-bold">Сумма: {formatNumber(totals.totalCost)} ₽</span>
+          
+          <div className="ml-auto flex items-center gap-2">
+            <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Группировка:</span>
+            <button onClick={() => setGroupBy('none')} className={`px-2 py-1 text-xs rounded ${groupBy === 'none' ? 'bg-green-600 text-white' : (darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-200')}`}>Без группировки</button>
+            <button onClick={() => setGroupBy('type')} className={`px-2 py-1 text-xs rounded ${groupBy === 'type' ? 'bg-green-600 text-white' : (darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-200')}`}>По типу</button>
+          </div>
         </div>
       </div>
     </div>

@@ -4,9 +4,10 @@ import { calcDurationHours, calcAutoCost, calcServiceHours, calcServiceCost, for
 
 interface Props {
   onStatus?: (msg: string) => void;
+  darkMode?: boolean;
 }
 
-export default function StatsTab({ onStatus }: Props) {
+export default function StatsTab({ onStatus, darkMode = false }: Props) {
   const { state } = useStore();
 
   const defaultEnd = new Date().toISOString().split('T')[0];
