@@ -73,6 +73,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [syncTimeout, setSyncTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
+  const [hasLoaded, setHasLoaded] = useState(false); // Флаг первой загрузки
 
   // Загрузка данных с сервера при старте
   useEffect(() => {
@@ -97,6 +98,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       } finally {
         setIsLoading(false);
+        setHasLoaded(true); // Устанавливаем флаг после загрузки
       }
     }
     
@@ -135,7 +137,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // Автосохранение на сервер при изменении состояния (с debounce)
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || !hasLoaded) return; // Не сохраняем при первой загрузке
     
     // Очищаем предыдущий таймер
     if (syncTimeout) {
@@ -179,7 +181,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => {
       if (timeout) clearTimeout(timeout);
     };
-  }, [state, isLoading]);
+  }, [state, isLoading, hasLoaded]);
 
   // Остановка продления блокировки при размонтировании
   useEffect(() => {
