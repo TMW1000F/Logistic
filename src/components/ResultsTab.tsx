@@ -177,7 +177,21 @@ export default function ResultsTab({ onStatus, darkMode = false }: Props) {
       return rowData;
     });
 
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+    // Добавляем общие итоги
+    const totalRow = ['Общие итоги', `Всего за период: ${summaryData.totalAllCount} записей, время ${formatNumber(summaryData.totalAllTime)} ч, сумма ${formatNumber(summaryData.totalAllCost)}`];
+    
+    // Пустая строка
+    const emptyRow = [''];
+    
+    // Статистика по типам услуг
+    const serviceStatsHeader = ['Статистика по типам услуг'];
+    const serviceStatsColumns = ['Тип услуги', 'Кол-во заказов', 'Единиц', 'Часы', 'Стоимость'];
+    const serviceStatsData = serviceTypeStats.map(s => [s.type, s.orders, s.units, s.hours, s.cost]);
+    
+    // Объединяем все данные
+    const allData = [headers, ...data, emptyRow, totalRow, emptyRow, serviceStatsHeader, serviceStatsColumns, ...serviceStatsData];
+
+    const ws = XLSX.utils.aoa_to_sheet(allData);
     XLSX.utils.book_append_sheet(wb, ws, 'Итоги');
 
     XLSX.writeFile(wb, 'итоги.xlsx');
