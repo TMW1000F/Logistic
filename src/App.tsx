@@ -7,7 +7,7 @@ import ServicesTab from './components/ServicesTab';
 import ResultsTab from './components/ResultsTab';
 import TariffsTab from './components/TariffsTab';
 import StatsTab from './components/StatsTab';
-import { Car, Wrench, BarChart3, DollarSign, TrendingUp, HelpCircle, Save, FolderOpen, FilePlus, Sun, Moon, LogOut, Eye } from 'lucide-react';
+import { Car, Wrench, BarChart3, DollarSign, TrendingUp, HelpCircle, Save, FolderOpen, FilePlus, Sun, Moon, LogOut, Eye, Lock } from 'lucide-react';
 import { calcDurationHours, calcAutoCost, calcServiceHours, calcServiceCost, formatDate } from './types';
 import { 
   hasComputerName, 
@@ -520,8 +520,16 @@ function AppContent() {
               {isLoading && (
                 <div className="text-yellow-300">⏳ Загрузка...</div>
               )}
-              {isLocked && lockInfo && (
-                <div className="text-red-300">🔒 Заблокировано: {lockInfo.computerName}</div>
+              {isLocked && lockInfo && currentUser && (
+                <div className={`flex items-center gap-1 justify-end ${lockInfo.userId === currentUser.id ? 'text-green-300' : 'text-red-300'}`}>
+                  <Lock size={12} />
+                  <span>
+                    {lockInfo.userId === currentUser.id 
+                      ? 'Заблокировано: Вами' 
+                      : `Заблокировано: ${lockInfo.computerName}`
+                    }
+                  </span>
+                </div>
               )}
             </div>
             <button
