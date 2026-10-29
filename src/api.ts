@@ -236,10 +236,13 @@ export async function getLockInfo(): Promise<{ locked: boolean; lockInfo: LockIn
 // Освободить блокировку
 export async function releaseLock(): Promise<void> {
   try {
+    const currentUser = getCurrentUser();
+    const authUserId = currentUser?.id || userId;
     await fetch(`${API_BASE}/lock/release`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId })
+      body: JSON.stringify({ userId: authUserId }),
+      keepalive: true // Важно! Позволяет запросу завершиться даже при закрытии страницы
     });
   } catch (error) {
     console.error('Ошибка releaseLock:', error);
@@ -373,7 +376,26 @@ export function stopLockExtension() {
 
 // Освобождение блокировки при закрытии страницы
 export function setupLockRelease() {
-  window.addEventListener('beforeunload', () => {
-    releaseLock();
+  // Используем sendBeacon для надёжной отправки при закрытии страницы
+  const sendReleaseBeacon = () => {
+    const currentUser = getCurrentUser();
+    const authUserId = currentUser?.id || userId;
+    
+    // sendBeacon гарантирует доставку даже при закрытии страницы
+    const blob = new Blob([JSON.stringify({ userId: authUserId })], { type: 'application/json' });
+    navigator.sendBeacon(`${API_BASE}/lock/release`, blob);
+  };
+
+  // Событие перед закрытием вкладки
+  window.addEventListener('beforeunload', sendReleaseBeacon);
+  
+  // Событие при скрытии страницы (более надёжное)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      sendReleaseBeacon();
+    }
   });
+  
+  // Событие при выгрузке страницы
+  window.addEventListener('pagehide', sendReleaseBeacon);
 }
