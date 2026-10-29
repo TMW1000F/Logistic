@@ -7,6 +7,7 @@ import ResultsTab from './components/ResultsTab';
 import TariffsTab from './components/TariffsTab';
 import StatsTab from './components/StatsTab';
 import { Car, Wrench, BarChart3, DollarSign, TrendingUp, HelpCircle, Save, FolderOpen, FilePlus, Sun, Moon } from 'lucide-react';
+import { calcDurationHours, calcAutoCost, calcServiceHours, calcServiceCost, formatDate } from './types';
 
 const APP_NAME = 'Учёт автомобилей';
 const VERSION = '2.0';
@@ -70,19 +71,66 @@ function AppContent() {
     setTimeout(() => setStatusMessage('Готов к работе'), 3000);
   };
 
-  // Сохранение в файл
+  // Сохранение в файл (TSV формат)
   const handleSave = () => {
-    const data = {
-      autoRecords: state.autoRecords,
-      serviceRecords: state.serviceRecords,
-      tariffs: state.tariffs,
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const lines: string[] = [];
+    
+    // Заголовок
+    lines.push('Тип\tНомер ТС\tКатегория\tКомпания\tКол-во\tТип оплаты\tВремя\tЧасы\tСтоимость\tТариф\tДата\tКоэффициент');
+    
+    // Автомобили
+    for (const record of state.autoRecords) {
+      const duration = calcDurationHours(record.arrival, record.departure);
+      const cost = calcAutoCost(record);
+      const coeff = record.coefficient !== 1.0 ? `да х${record.coefficient}` : '-';
+      
+      lines.push([
+        'auto',
+        record.car_number,
+        record.car_type,
+        record.carrier,
+        '1',
+        '-',
+        `${record.arrival}-${record.departure}`,
+        duration.toFixed(2),
+        cost.toFixed(2),
+        record.tariff.toFixed(2),
+        formatDate(record.date),
+        coeff
+      ].join('\t'));
+    }
+    
+    // Услуги
+    for (const record of state.serviceRecords) {
+      const hours = calcServiceHours(record);
+      const cost = calcServiceCost(record);
+      const coeff = record.coefficient !== 1.0 ? `да х${record.coefficient}` : '-';
+      const time = record.payment_type === 'hourly' && record.arrival && record.departure 
+        ? `${record.arrival}-${record.departure}` 
+        : '-';
+      
+      lines.push([
+        'service',
+        '-',
+        record.service_type,
+        record.carrier,
+        record.quantity.toString(),
+        record.payment_type === 'hourly' ? 'Почасовая' : 'Фиксированная',
+        time,
+        hours.toFixed(2),
+        cost.toFixed(2),
+        record.tariff.toFixed(2),
+        formatDate(record.date),
+        coeff
+      ].join('\t'));
+    }
+    
+    const blob = new Blob([lines.join('\n')], { type: 'text/tab-separated-values;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     const dateStr = new Date().toISOString().split('T')[0];
-    a.download = `car_accounting_${dateStr}.json`;
+    a.download = `car_accounting_${dateStr}.txt`;
     a.click();
     URL.revokeObjectURL(url);
     toast.success(`Сохранено: авто — ${state.autoRecords.length}, услуг — ${state.serviceRecords.length}`);
@@ -101,14 +149,114 @@ function AppContent() {
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
-        const data = JSON.parse(ev.target?.result as string);
-        if (!data.autoRecords || !data.serviceRecords) {
-          toast.error('Неверный формат файла');
+        const content = ev.target?.result as string;
+        const lines = content.split('\n').filter(line => line.trim());
+        
+        if (lines.length < 2) {
+          toast.error('Файл пуст или содержит только заголовок');
           return;
         }
-        dispatch({ type: 'IMPORT_DATA', payload: data });
-        toast.success(`Загружено: авто — ${data.autoRecords.length}, услуг — ${data.serviceRecords.length}`);
-        showStatus(`📂 Загружено: авто — ${data.autoRecords.length}, услуг — ${data.serviceRecords.length}`);
+        
+        // Пропускаем заголовок
+        const dataLines = lines.slice(1);
+        const autoRecords: any[] = [];
+        const serviceRecords: any[] = [];
+        
+        for (const line of dataLines) {
+          const cols = line.split('\t');
+          if (cols.length < 12) continue;
+          
+          const type = cols[0];
+          const dateStr = cols[10]; // DD-MM-YYYY
+          
+          // Парсим дату
+          const [day, month, year] = dateStr.split('-');
+          const date = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+          
+          // Парсим время
+          const timeStr = cols[6];
+          let arrival = '00:00';
+          let departure = '00:00';
+          if (timeStr && timeStr !== '-') {
+            const [arr, dep] = timeStr.split('-');
+            arrival = arr;
+            departure = dep;
+          }
+          
+          // Парсим коэффициент
+          const coeffStr = cols[11];
+          let coefficient = 1.0;
+          if (coeffStr && coeffStr !== '-' && coeffStr.includes('х')) {
+            coefficient = parseFloat(coeffStr.replace('да х', '')) || 1.0;
+          }
+          
+          if (type === 'auto') {
+            autoRecords.push({
+              id: Math.random().toString(36).substr(2, 9),
+              car_number: cols[1],
+              car_type: cols[2],
+              carrier: cols[3],
+              arrival,
+              departure,
+              date,
+              tariff: parseFloat(cols[9]) || 0,
+              coefficient
+            });
+          } else if (type === 'service') {
+            const paymentType = cols[5] === 'Почасовая' ? 'hourly' : 'fixed';
+            serviceRecords.push({
+              id: Math.random().toString(36).substr(2, 9),
+              service_type: cols[2],
+              carrier: cols[3],
+              quantity: parseInt(cols[4]) || 1,
+              payment_type: paymentType,
+              arrival: paymentType === 'hourly' ? arrival : null,
+              departure: paymentType === 'hourly' ? departure : null,
+              date,
+              tariff: parseFloat(cols[9]) || 0,
+              coefficient
+            });
+          }
+        }
+        
+        // Спрашиваем пользователя: добавить или заменить
+        const hasExistingData = state.autoRecords.length > 0 || state.serviceRecords.length > 0;
+        let mode: 'add' | 'replace' = 'replace';
+        
+        if (hasExistingData) {
+          const choice = confirm(
+            `В памяти есть данные (${state.autoRecords.length} авто, ${state.serviceRecords.length} услуг).\n\n` +
+            `Нажмите "OK" чтобы ЗАМЕНИТЬ все данные\n` +
+            `Нажмите "Отмена" чтобы ДОБАВИТЬ к существующим`
+          );
+          mode = choice ? 'replace' : 'add';
+        }
+        
+        if (mode === 'replace') {
+          dispatch({ 
+            type: 'IMPORT_DATA', 
+            payload: { 
+              autoRecords, 
+              serviceRecords, 
+              tariffs: state.tariffs 
+            } 
+          });
+        } else {
+          // Добавляем к существующим
+          const newAutoRecords = [...state.autoRecords, ...autoRecords];
+          const newServiceRecords = [...state.serviceRecords, ...serviceRecords];
+          dispatch({ 
+            type: 'IMPORT_DATA', 
+            payload: { 
+              autoRecords: newAutoRecords, 
+              serviceRecords: newServiceRecords, 
+              tariffs: state.tariffs 
+            } 
+          });
+        }
+        
+        toast.success(`Загружено: авто — ${autoRecords.length}, услуг — ${serviceRecords.length} (${mode === 'replace' ? 'замена' : 'добавление'})`);
+        showStatus(`📂 Загружено: авто — ${autoRecords.length}, услуг — ${serviceRecords.length}`);
       } catch (err) {
         toast.error('Ошибка чтения файла: ' + (err as Error).message);
       }
@@ -145,7 +293,7 @@ function AppContent() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".json"
+        accept=".txt,.tsv"
         onChange={handleFileSelected}
         className="hidden"
       />
