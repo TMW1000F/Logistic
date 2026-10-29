@@ -14,7 +14,7 @@ const VERSION = '2.0';
 const COMPANY_NAME = "АО «Логистик-Центр»";
 
 function AppContent() {
-  const { state, dispatch } = useStore();
+  const { state, dispatch, isLocked, lockInfo, isLoading, error } = useStore();
   const toast = useToast();
   const [activeTab, setActiveTab] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -25,6 +25,13 @@ function AppContent() {
     return saved === 'true';
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Показываем ошибку синхронизации
+  useEffect(() => {
+    if (error) {
+      toast.error(error);
+    }
+  }, [error]);
 
   // Применение темы
   useEffect(() => {
@@ -347,6 +354,12 @@ function AppContent() {
             <div className="text-right text-xs">
               <div className="text-blue-200">Записей: {totalRecords}</div>
               <div>{currentTime.toLocaleString('ru-RU')}</div>
+              {isLoading && (
+                <div className="text-yellow-300">⏳ Загрузка...</div>
+              )}
+              {isLocked && lockInfo && (
+                <div className="text-red-300">🔒 Заблокировано: {lockInfo.computerName}</div>
+              )}
             </div>
             <button
               onClick={() => setShowHelp(true)}

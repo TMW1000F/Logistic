@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, ReactNode, useState } from 'react';
 import { AppState, CarRecord, ServiceRecord, Tariff } from './types';
+import { fetchData, updateData, startLockExtension, stopLockExtension, setupLockRelease, userId, computerName } from './api';
 
 // ==================== Начальное состояние ====================
 const initialState: AppState = {
@@ -56,37 +57,137 @@ function reducer(state: AppState, action: Action): AppState {
 interface StoreContextType {
   state: AppState;
   dispatch: React.Dispatch<Action>;
+  syncToServer: () => Promise<boolean>;
+  isLocked: boolean;
+  lockInfo: { userId: string; computerName: string } | null;
+  isLoading: boolean;
+  error: string | null;
 }
 
 const StoreContext = createContext<StoreContextType | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const [isLocked, setIsLocked] = useState(false);
+  const [lockInfo, setLockInfo] = useState<{ userId: string; computerName: string } | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [syncTimeout, setSyncTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
 
-  // Загрузка из localStorage при старте
+  // Загрузка данных с сервера при старте
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('car_accounting_data');
-      if (saved) {
-        const parsed = JSON.parse(saved) as AppState;
-        dispatch({ type: 'LOAD_STATE', payload: parsed });
+    async function loadFromServer() {
+      try {
+        setIsLoading(true);
+        const data = await fetchData();
+        dispatch({ type: 'LOAD_STATE', payload: data });
+        setError(null);
+      } catch (err) {
+        console.error('Ошибка загрузки с сервера:', err);
+        setError('Не удалось загрузить данные с сервера. Используем локальное хранилище.');
+        // Fallback на localStorage
+        try {
+          const saved = localStorage.getItem('car_accounting_data');
+          if (saved) {
+            const parsed = JSON.parse(saved) as AppState;
+            dispatch({ type: 'LOAD_STATE', payload: parsed });
+          }
+        } catch (e) {
+          console.error('Ошибка загрузки из localStorage:', e);
+        }
+      } finally {
+        setIsLoading(false);
       }
-    } catch (e) {
-      console.error('Error loading data:', e);
     }
+    
+    loadFromServer();
+    setupLockRelease();
   }, []);
 
-  // Сохранение в localStorage при изменении
+  // Автосохранение на сервер при изменении состояния (с debounce)
   useEffect(() => {
-    try {
-      localStorage.setItem('car_accounting_data', JSON.stringify(state));
-    } catch (e) {
-      console.error('Error saving data:', e);
+    if (isLoading) return;
+    
+    // Очищаем предыдущий таймер
+    if (syncTimeout) {
+      clearTimeout(syncTimeout);
     }
-  }, [state]);
+    
+    // Устанавливаем новый таймер (задержка 2 секунды)
+    const timeout = setTimeout(async () => {
+      try {
+        const result = await updateData(state);
+        if (result.success) {
+          startLockExtension();
+          setIsLocked(false);
+          setLockInfo(null);
+          setError(null);
+          // Также сохраняем в localStorage как backup
+          localStorage.setItem('car_accounting_data', JSON.stringify(state));
+        } else {
+          // Данные заблокированы
+          setIsLocked(true);
+          setLockInfo(result.lockInfo ? { 
+            userId: result.lockInfo.userId, 
+            computerName: result.lockInfo.computerName 
+          } : null);
+          setError(`Данные заблокированы пользователем: ${result.lockInfo?.computerName || 'неизвестно'}`);
+        }
+      } catch (err) {
+        console.error('Ошибка синхронизации с сервером:', err);
+        setError('Не удалось синхронизировать с сервером. Данные сохранены локально.');
+        // Fallback на localStorage
+        localStorage.setItem('car_accounting_data', JSON.stringify(state));
+      }
+    }, 2000);
+    
+    setSyncTimeout(timeout);
+    
+    return () => {
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [state, isLoading]);
+
+  // Остановка продления блокировки при размонтировании
+  useEffect(() => {
+    return () => {
+      stopLockExtension();
+    };
+  }, []);
+
+  // Функция для принудительной синхронизации
+  const syncToServer = async (): Promise<boolean> => {
+    try {
+      const result = await updateData(state);
+      if (result.success) {
+        setIsLocked(false);
+        setLockInfo(null);
+        setError(null);
+        return true;
+      } else {
+        setIsLocked(true);
+        setLockInfo(result.lockInfo ? { 
+          userId: result.lockInfo.userId, 
+          computerName: result.lockInfo.computerName 
+        } : null);
+        return false;
+      }
+    } catch (err) {
+      console.error('Ошибка синхронизации:', err);
+      return false;
+    }
+  };
 
   return (
-    <StoreContext.Provider value={{ state, dispatch }}>
+    <StoreContext.Provider value={{ 
+      state, 
+      dispatch, 
+      syncToServer,
+      isLocked,
+      lockInfo,
+      isLoading,
+      error
+    }}>
       {children}
     </StoreContext.Provider>
   );
