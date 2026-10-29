@@ -380,11 +380,17 @@ export function setReleaseCallback(callback: () => void) {
 
 // Начало отслеживания активности.
 // events — список событий, которые считаются «действием пользователя».
-// По умолчанию: клики, клавиши, скролл, тач. ДВИЖЕНИЯ МЫШИ НЕ СЧИТАЮТСЯ.
-export function startActivityTracking(events: string[] = ['mousedown', 'keydown', 'scroll', 'touchstart']) {
+// По умолчанию: клики, клавиши и осознанный тач (касание с движением).
+// ДВИЖЕНИЯ МЫШИ И СКРОЛЛ НЕ СЧИТАЮТСЯ — scroll/wheel могут приходить от фоновых окон.
+export function startActivityTracking(events: string[] = ['mousedown', 'keydown']) {
   events.forEach(event => {
     window.addEventListener(event, updateActivity, { passive: true });
   });
+
+  // Осознанный тач (жест с движением) тоже считается активностью.
+  window.addEventListener('touchstart', onTouchStart, { passive: true });
+  window.addEventListener('touchmove', onTouchMove, { passive: true });
+  window.addEventListener('touchend', onTouchEndCleanup, { passive: true });
 
   // Инициализация таймеров
   updateActivity();
@@ -400,8 +406,32 @@ export function stopActivityTracking() {
   stopHeartbeatInterval();
   window.removeEventListener('mousedown', updateActivity);
   window.removeEventListener('keydown', updateActivity);
-  window.removeEventListener('scroll', updateActivity);
-  window.removeEventListener('touchstart', updateActivity);
+  window.removeEventListener('touchstart', onTouchStart);
+  window.removeEventListener('touchmove', onTouchMove);
+  window.removeEventListener('touchend', onTouchEndCleanup);
+}
+
+// Тач-активность: простое касание (touchstart) НЕ продлевает замок —
+// оно может случиться на неактивном/фоновом окне. Продлеваем только при
+// осознанном жесте: движении пальца по экрану (touchmove).
+let touchActivePoint: { x: number; y: number } | null = null;
+function onTouchStart(e: TouchEvent) {
+  const t = e.touches[0];
+  touchActivePoint = t ? { x: t.clientX, y: t.clientY } : null;
+}
+function onTouchMove(e: TouchEvent) {
+  const t = e.touches[0];
+  if (!t) return;
+  if (touchActivePoint) {
+    const dx = Math.abs(t.clientX - touchActivePoint.x);
+    const dy = Math.abs(t.clientY - touchActivePoint.y);
+    // меньше ~10px — случайное дрожание, не считаем активностью
+    if (dx < 10 && dy < 10) return;
+  }
+  updateActivity();
+}
+function onTouchEndCleanup() {
+  touchActivePoint = null;
 }
 
 // Явно занять блокировку при старте приложения (сразу БЛОКИРУЕМ, если свободно).
