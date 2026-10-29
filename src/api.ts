@@ -259,6 +259,100 @@ export async function extendLock(): Promise<void> {
   }
 }
 
+// ==================== Отслеживание активности ====================
+
+let lastActivityTime = Date.now();
+let warningTimeout: ReturnType<typeof setTimeout> | null = null;
+let releaseTimeout: ReturnType<typeof setTimeout> | null = null;
+let onWarningCallback: (() => void) | null = null;
+let onReleaseCallback: (() => void) | null = null;
+
+const WARNING_TIME = 5 * 60 * 1000; // 5 минут до предупреждения
+const RELEASE_TIME = 60 * 1000; // 1 минута после предупреждения до снятия
+
+// Обновление времени последней активности
+export function updateActivity() {
+  lastActivityTime = Date.now();
+  
+  // Сбрасываем таймеры если они были установлены
+  if (warningTimeout) {
+    clearTimeout(warningTimeout);
+    warningTimeout = null;
+  }
+  if (releaseTimeout) {
+    clearTimeout(releaseTimeout);
+    releaseTimeout = null;
+  }
+  
+  // Запускаем новые таймеры
+  startInactivityTimers();
+}
+
+// Запуск таймеров неактивности
+function startInactivityTimers() {
+  // Таймер предупреждения (через 5 минут)
+  warningTimeout = setTimeout(() => {
+    if (onWarningCallback) {
+      onWarningCallback();
+    }
+    
+    // Таймер снятия блокировки (через 1 минуту после предупреждения)
+    releaseTimeout = setTimeout(async () => {
+      await releaseLock();
+      if (onReleaseCallback) {
+        onReleaseCallback();
+      }
+    }, RELEASE_TIME);
+  }, WARNING_TIME);
+}
+
+// Установка callback для предупреждения
+export function setWarningCallback(callback: () => void) {
+  onWarningCallback = callback;
+}
+
+// Установка callback для снятия блокировки
+export function setReleaseCallback(callback: () => void) {
+  onReleaseCallback = callback;
+}
+
+// Проверка, есть ли активная блокировка от другого пользователя
+export async function checkLockStatus(): Promise<{ locked: boolean; lockInfo: any }> {
+  try {
+    const response = await fetch(`${API_BASE}/lock`);
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    console.error('Ошибка проверки блокировки:', error);
+    return { locked: false, lockInfo: null };
+  }
+}
+
+// Начало отслеживания активности
+export function startActivityTracking() {
+  // Слушатели событий активности
+  const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart'];
+  
+  events.forEach(event => {
+    window.addEventListener(event, updateActivity, { passive: true });
+  });
+  
+  // Инициализация таймеров
+  updateActivity();
+}
+
+// Остановка отслеживания активности
+export function stopActivityTracking() {
+  if (warningTimeout) {
+    clearTimeout(warningTimeout);
+    warningTimeout = null;
+  }
+  if (releaseTimeout) {
+    clearTimeout(releaseTimeout);
+    releaseTimeout = null;
+  }
+}
+
 // Автоматическое продление блокировки каждые 10 минут
 let lockInterval: ReturnType<typeof setInterval> | null = null;
 

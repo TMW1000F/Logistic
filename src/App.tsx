@@ -9,7 +9,20 @@ import TariffsTab from './components/TariffsTab';
 import StatsTab from './components/StatsTab';
 import { Car, Wrench, BarChart3, DollarSign, TrendingUp, HelpCircle, Save, FolderOpen, FilePlus, Sun, Moon, LogOut, Eye } from 'lucide-react';
 import { calcDurationHours, calcAutoCost, calcServiceHours, calcServiceCost, formatDate } from './types';
-import { hasComputerName, setComputerName, getComputerName, getCurrentUser, logout, verifyToken } from './api';
+import { 
+  hasComputerName, 
+  setComputerName, 
+  getComputerName, 
+  getCurrentUser, 
+  logout, 
+  verifyToken,
+  startActivityTracking,
+  stopActivityTracking,
+  setWarningCallback,
+  setReleaseCallback,
+  checkLockStatus,
+  updateActivity
+} from './api';
 
 const APP_NAME = 'Учёт автомобилей';
 const VERSION = '2.0';
@@ -31,6 +44,7 @@ function AppContent() {
   const [isAuthChecked, setIsAuthChecked] = useState(false);
   const [isAuthenticatedUser, setIsAuthenticatedUser] = useState(false);
   const [readOnly, setReadOnly] = useState(false);
+  const [showInactivityWarning, setShowInactivityWarning] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Проверка авторизации при загрузке
@@ -48,6 +62,69 @@ function AppContent() {
     };
     checkAuth();
   }, []);
+
+  // Отслеживание активности пользователя
+  useEffect(() => {
+    if (!isAuthenticatedUser || readOnly) return;
+
+    // Настраиваем callback для предупреждения
+    setWarningCallback(() => {
+      setShowInactivityWarning(true);
+      toast.warning('⚠️ Блокировка будет снята через 1 минуту из-за неактивности');
+    });
+
+    // Настраиваем callback для снятия блокировки
+    setReleaseCallback(() => {
+      setShowInactivityWarning(false);
+      toast.info('🔓 Блокировка снята из-за неактивности');
+    });
+
+    // Запускаем отслеживание активности
+    startActivityTracking();
+
+    // Очистка при размонтировании
+    return () => {
+      stopActivityTracking();
+    };
+  }, [isAuthenticatedUser, readOnly]);
+
+  // При возврате активности проверяем статус блокировки
+  useEffect(() => {
+    if (!isAuthenticatedUser || readOnly) return;
+
+    const handleActivity = async () => {
+      // Обновляем активность
+      updateActivity();
+      
+      // Если было показано предупреждение, значит была неактивность
+      if (showInactivityWarning) {
+        setShowInactivityWarning(false);
+        
+        // Проверяем, не заблокировал ли кто-то данные
+        const lockStatus = await checkLockStatus();
+        
+        if (lockStatus.locked && lockStatus.lockInfo) {
+          // Кто-то заблокировал данные
+          toast.error(`🔒 Данные заблокированы пользователем: ${lockStatus.lockInfo.computerName}`);
+        } else {
+          // Блокировка свободна, можно продолжать работу
+          toast.success('✅ Блокировка восстановлена, можно продолжать работу');
+        }
+      }
+    };
+
+    // Слушаем события активности
+    const events = ['mousedown', 'keydown', 'scroll'];
+    events.forEach(event => {
+      window.addEventListener(event, handleActivity, { passive: true });
+    });
+
+    return () => {
+      events.forEach(event => {
+        window.removeEventListener(event, handleActivity);
+      });
+    };
+  }, [showInactivityWarning, isAuthenticatedUser, readOnly]);
 
   // Показываем ошибку синхронизации
   useEffect(() => {
@@ -586,6 +663,20 @@ function AppContent() {
             >
               Продолжить
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Предупреждение о неактивности */}
+      {showInactivityWarning && (
+        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 animate-pulse">
+          <div className="bg-orange-500 text-white px-6 py-4 rounded-lg shadow-2xl flex items-center gap-3">
+            <span className="text-2xl">⚠️</span>
+            <div>
+              <p className="font-bold">Внимание!</p>
+              <p className="text-sm">Блокировка будет снята через 1 минуту из-за неактивности</p>
+              <p className="text-xs mt-1 opacity-90">Совершите любое действие для отмены</p>
+            </div>
           </div>
         </div>
       )}
