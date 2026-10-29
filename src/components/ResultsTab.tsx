@@ -134,38 +134,51 @@ export default function ResultsTab({ onStatus, darkMode = false }: Props) {
     return Object.entries(stats).map(([type, data]) => ({ type, ...data })).sort((a, b) => a.type.localeCompare(b.type));
   }, [state, startDate, endDate, selectedCarrier]);
 
-  // Экспорт в Excel
+  // Экспорт в Excel (новый формат)
   const exportToExcel = () => {
     if (!summaryData || summaryData.rows.length === 0) {
       toast.warning('Нет данных для сохранения');
       return;
     }
 
+    // Формат даты: "01-Oct-2026"
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const formatDateExcel = (dateStr: string) => {
+      const [y, m, d] = dateStr.split('-');
+      return `${d}-${months[parseInt(m) - 1]}-${y}`;
+    };
+
     const wb = XLSX.utils.book_new();
     
-    // Заголовки
-    const headers = ['Дата', ...summaryData.sortedTypes.flatMap(t => [t, 'Кол-во', 'Часы', 'Стоимость']), 'Всего ТС', 'Всего часов', 'Всего стоимость'];
+    // Заголовки: Дата, затем для каждого типа 4 колонки
+    const headers = ['Дата'];
+    for (const type of summaryData.sortedTypes) {
+      headers.push(type, 'Кол-во', 'Часы', 'Стоимость');
+    }
+    headers.push('Всего ТС', 'Всего часов', 'Всего стоимость');
     
     const data = summaryData.rows.map(row => {
-      const rowData: any[] = [formatDate(row.date)];
+      const rowData: any[] = [formatDateExcel(row.date)];
+      
       for (const type of summaryData.sortedTypes) {
         const td = row.typeData[type] || { count: 0, time: 0, cost: 0 };
-        rowData.push(type, td.count, td.time, td.cost);
+        
+        // Если данных нет - пустая строка и нули
+        if (td.count === 0) {
+          rowData.push('', 0, 0, 0);
+        } else {
+          // Если есть данные - название типа и значения
+          rowData.push(type, td.count, Math.round(td.time), td.cost);
+        }
       }
-      rowData.push(row.dayCount, row.dayTime, row.dayCost);
+      
+      // Итого
+      rowData.push(row.dayCount, Math.round(row.dayTime), row.dayCost);
       return rowData;
     });
 
     const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
     XLSX.utils.book_append_sheet(wb, ws, 'Итоги');
-
-    // Статистика по услугам
-    if (serviceTypeStats.length > 0) {
-      const svcHeaders = ['Тип услуги', 'Кол-во заказов', 'Единиц', 'Часы', 'Стоимость'];
-      const svcData = serviceTypeStats.map(s => [s.type, s.orders, s.units, s.hours, s.cost]);
-      const ws2 = XLSX.utils.aoa_to_sheet([svcHeaders, ...svcData]);
-      XLSX.utils.book_append_sheet(wb, ws2, 'Услуги');
-    }
 
     XLSX.writeFile(wb, 'итоги.xlsx');
     toast.success('Данные успешно экспортированы в Excel');
