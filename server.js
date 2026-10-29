@@ -14,6 +14,24 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
+// Middleware для обработки sendBeacon (отправляет text/plain)
+app.use((req, res, next) => {
+  if (req.method === 'POST' && !req.body && req.headers['content-type']?.includes('text/plain')) {
+    let data = '';
+    req.on('data', chunk => { data += chunk; });
+    req.on('end', () => {
+      try {
+        req.body = JSON.parse(data);
+      } catch (e) {
+        req.body = {};
+      }
+      next();
+    });
+  } else {
+    next();
+  }
+});
+
 // Путь к файлу данных
 const DATA_FILE = path.join(__dirname, 'data.json');
 const LOCK_FILE = path.join(__dirname, 'lock.json');
@@ -335,13 +353,15 @@ app.get('/api/lock', async (req, res) => {
 
 // Освободить блокировку
 app.post('/api/lock/release', async (req, res) => {
-  console.log('🔓 POST /api/lock/release');
+  console.log('🔓 POST /api/lock/release', { body: req.body, headers: req.headers['content-type'] });
   const { userId } = req.body;
   
   if (!userId) {
+    console.log('❌ userId не указан в запросе');
     return res.status(400).json({ error: 'userId обязателен' });
   }
   
+  console.log(`🔓 Освобождаю блокировку для userId: ${userId}`);
   await releaseLock(userId);
   res.json({ success: true });
 });

@@ -376,14 +376,36 @@ export function stopLockExtension() {
 
 // Освобождение блокировки при закрытии страницы
 export function setupLockRelease() {
+  let released = false;
+  
   // Используем sendBeacon для надёжной отправки при закрытии страницы
   const sendReleaseBeacon = () => {
+    if (released) return;
+    released = true;
+    
     const currentUser = getCurrentUser();
     const authUserId = currentUser?.id || userId;
     
-    // sendBeacon гарантирует доставку даже при закрытии страницы
-    const blob = new Blob([JSON.stringify({ userId: authUserId })], { type: 'application/json' });
-    navigator.sendBeacon(`${API_BASE}/lock/release`, blob);
+    // Используем абсолютный URL — sendBeacon не работает с относительными путями
+    const url = `${window.location.origin}${API_BASE}/lock/release`;
+    
+    try {
+      // sendBeacon гарантирует доставку даже при закрытии страницы
+      const blob = new Blob([JSON.stringify({ userId: authUserId })], { type: 'application/json' });
+      navigator.sendBeacon(url, blob);
+    } catch (e) {
+      // Fallback: fetch с keepalive
+      try {
+        fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: authUserId }),
+          keepalive: true
+        });
+      } catch (e2) {
+        console.error('Не удалось освободить блокировку:', e2);
+      }
+    }
   };
 
   // Событие перед закрытием вкладки
