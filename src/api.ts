@@ -81,20 +81,6 @@ export function isAuthenticated(): boolean {
   return !!localStorage.getItem('authToken');
 }
 
-// Проверить, в режиме ли только просмотра
-export function isReadOnlyMode(): boolean {
-  return localStorage.getItem('readOnlyMode') === 'true';
-}
-
-// Установить режим только просмотра
-export function setReadOnlyMode(enabled: boolean): void {
-  if (enabled) {
-    localStorage.setItem('readOnlyMode', 'true');
-  } else {
-    localStorage.removeItem('readOnlyMode');
-  }
-}
-
 // Регистрация
 export async function register(username: string, password: string, displayName: string): Promise<AuthResponse> {
   try {
@@ -159,7 +145,6 @@ export async function logout(): Promise<void> {
   
   localStorage.removeItem('authToken');
   localStorage.removeItem('currentUser');
-  localStorage.removeItem('readOnlyMode');
 }
 
 // Проверка токена
@@ -211,11 +196,6 @@ export async function fetchData(): Promise<AppState> {
 
 // Обновить все данные
 export async function updateData(data: AppState, userIdParam?: string, computerNameParam?: string): Promise<{ success: boolean; lockInfo?: LockInfo }> {
-  // В режиме только просмотра не отправляем данные
-  if (isReadOnlyMode()) {
-    return { success: true };
-  }
-  
   try {
     const currentUser = getCurrentUser();
     const response = await fetch(`${API_BASE}/data`, {

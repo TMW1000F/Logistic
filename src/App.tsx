@@ -9,7 +9,7 @@ import TariffsTab from './components/TariffsTab';
 import StatsTab from './components/StatsTab';
 import { Car, Wrench, BarChart3, DollarSign, TrendingUp, HelpCircle, Save, FolderOpen, FilePlus, Sun, Moon, LogOut, Eye } from 'lucide-react';
 import { calcDurationHours, calcAutoCost, calcServiceHours, calcServiceCost, formatDate } from './types';
-import { hasComputerName, setComputerName, getComputerName, isAuthenticated, getCurrentUser, logout, isReadOnlyMode, setReadOnlyMode, verifyToken } from './api';
+import { hasComputerName, setComputerName, getComputerName, getCurrentUser, logout, verifyToken } from './api';
 
 const APP_NAME = 'Учёт автомобилей';
 const VERSION = '2.0';
@@ -37,8 +37,13 @@ function AppContent() {
   useEffect(() => {
     const checkAuth = async () => {
       const user = await verifyToken();
-      setIsAuthenticatedUser(!!user);
-      setReadOnly(isReadOnlyMode());
+      if (user) {
+        setIsAuthenticatedUser(true);
+        setReadOnly(false);
+      } else {
+        setIsAuthenticatedUser(false);
+        setReadOnly(false);
+      }
       setIsAuthChecked(true);
     };
     checkAuth();
@@ -103,14 +108,6 @@ function AppContent() {
     setIsAuthenticatedUser(false);
     setReadOnly(false);
     toast.info('Вы вышли из системы');
-  };
-
-  // Переключение режима только просмотра
-  const handleToggleReadOnly = () => {
-    const newMode = !readOnly;
-    setReadOnly(newMode);
-    setReadOnlyMode(newMode);
-    toast.info(newMode ? 'Режим только для просмотра включён' : 'Режим редактирования включён');
   };
 
   // Сохранение в файл (TSV формат)
@@ -341,8 +338,8 @@ function AppContent() {
     );
   }
 
-  // Если пользователь не авторизован - показываем экран авторизации
-  if (!isAuthenticatedUser) {
+  // Если пользователь не авторизован и не в режиме просмотра - показываем экран авторизации
+  if (!isAuthenticatedUser && !readOnly) {
     return (
       <AuthScreen 
         onAuthSuccess={() => {
@@ -351,8 +348,7 @@ function AppContent() {
         }}
         onReadOnlyMode={() => {
           setReadOnly(true);
-          setReadOnlyMode(true);
-          setIsAuthenticatedUser(true);
+          setIsAuthenticatedUser(false);
         }}
         darkMode={darkMode}
       />
@@ -419,18 +415,12 @@ function AppContent() {
                 </button>
               </>
             )}
-            <button
-              onClick={handleToggleReadOnly}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded text-sm transition ${
-                readOnly 
-                  ? 'bg-yellow-500/30 hover:bg-yellow-500/40 text-yellow-200' 
-                  : 'bg-white/10 hover:bg-white/20'
-              }`}
-              title={readOnly ? 'Переключить в режим редактирования' : 'Переключить в режим только просмотра'}
-            >
-              <Eye size={16} />
-              {readOnly ? 'Просмотр' : 'Редактирование'}
-            </button>
+            {readOnly && (
+              <div className="flex items-center gap-1 px-3 py-1.5 rounded text-sm bg-yellow-500/30 text-yellow-200">
+                <Eye size={16} />
+                Только просмотр
+              </div>
+            )}
             <button
               onClick={handleLogout}
               className="flex items-center gap-1 bg-red-500/20 hover:bg-red-500/30 px-3 py-1.5 rounded text-sm transition"
