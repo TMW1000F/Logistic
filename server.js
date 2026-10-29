@@ -17,9 +17,56 @@ app.use(express.json({ limit: '50mb' }));
 // Путь к файлу данных
 const DATA_FILE = path.join(__dirname, 'data.json');
 const LOCK_FILE = path.join(__dirname, 'lock.json');
+const USERS_FILE = path.join(__dirname, 'users.json');
 
 console.log('📁 Путь к файлу данных:', DATA_FILE);
 console.log('📁 Путь к файлу блокировки:', LOCK_FILE);
+console.log('📁 Путь к файлу пользователей:', USERS_FILE);
+
+// Простое хеширование пароля (для продакшена использовать bcrypt)
+function hashPassword(password) {
+  let hash = 0;
+  for (let i = 0; i < password.length; i++) {
+    const char = password.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return hash.toString(36);
+}
+
+// Инициализация файла пользователей
+async function initUsersFile() {
+  try {
+    await fs.access(USERS_FILE);
+    console.log('✅ Файл users.json найден');
+  } catch {
+    console.log('📝 Создаю новый файл users.json...');
+    await fs.writeFile(USERS_FILE, JSON.stringify([], null, 2));
+    console.log('✅ Файл users.json создан');
+  }
+}
+
+// Чтение пользователей
+async function readUsers() {
+  try {
+    const data = await fs.readFile(USERS_FILE, 'utf-8');
+    return JSON.parse(data);
+  } catch (error) {
+    console.error('❌ Ошибка чтения пользователей:', error);
+    return [];
+  }
+}
+
+// Запись пользователей
+async function writeUsers(users) {
+  try {
+    await fs.writeFile(USERS_FILE, JSON.stringify(users, null, 2));
+    console.log('✅ Пользователи сохранены');
+  } catch (error) {
+    console.error('❌ Ошибка записи пользователей:', error);
+    throw error;
+  }
+}
 
 // Инициализация файла данных
 async function initDataFile() {
@@ -112,6 +159,136 @@ async function releaseLock(userId) {
 
 // ==================== API Endpoints ====================
 
+// ==================== Авторизация ====================
+
+// Регистрация нового пользователя
+app.post('/api/auth/register', async (req, res) => {
+  console.log('📝 POST /api/auth/register');
+  const { username, password, displayName } = req.body;
+  
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Имя пользователя и пароль обязательны' });
+  }
+  
+  const users = await readUsers();
+  
+  // Проверяем, существует ли пользователь
+  if (users.find(u => u.username === username)) {
+    return res.status(400).json({ error: 'Пользователь с таким именем уже существует' });
+  }
+  
+  // Создаём нового пользователя
+  const newUser = {
+    id: Date.now().toString(36),
+    username,
+    passwordHash: hashPassword(password),
+    displayName: displayName || username,
+    createdAt: new Date().toISOString()
+  };
+  
+  users.push(newUser);
+  await writeUsers(users);
+  
+  console.log(`✅ Пользователь зарегистрирован: ${username}`);
+  
+  // Возвращаем токен (простой - на основе id)
+  const token = newUser.id;
+  res.json({ 
+    success: true, 
+    token,
+    user: { 
+      id: newUser.id, 
+      username: newUser.username, 
+      displayName: newUser.displayName 
+    }
+  });
+});
+
+// Вход пользователя
+app.post('/api/auth/login', async (req, res) => {
+  console.log('🔐 POST /api/auth/login');
+  const { username, password } = req.body;
+  
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Имя пользователя и пароль обязательны' });
+  }
+  
+  const users = await readUsers();
+  const user = users.find(u => u.username === username);
+  
+  if (!user) {
+    return res.status(401).json({ error: 'Пользователь не найден' });
+  }
+  
+  if (user.passwordHash !== hashPassword(password)) {
+    return res.status(401).json({ error: 'Неверный пароль' });
+  }
+  
+  console.log(`✅ Пользователь вошёл: ${username}`);
+  
+  const token = user.id;
+  res.json({ 
+    success: true, 
+    token,
+    user: { 
+      id: user.id, 
+      username: user.username, 
+      displayName: user.displayName 
+    }
+  });
+});
+
+// Выход пользователя
+app.post('/api/auth/logout', async (req, res) => {
+  const { token } = req.body;
+  console.log(`🚪 POST /api/auth/logout: ${token}`);
+  
+  // Освобождаем блокировку если она есть
+  if (token) {
+    await releaseLock(token);
+  }
+  
+  res.json({ success: true });
+});
+
+// Получить список пользователей (для отображения)
+app.get('/api/auth/users', async (req, res) => {
+  const users = await readUsers();
+  const userList = users.map(u => ({
+    id: u.id,
+    username: u.username,
+    displayName: u.displayName
+  }));
+  res.json(userList);
+});
+
+// Проверка токена
+app.get('/api/auth/verify', async (req, res) => {
+  const { token } = req.query;
+  
+  if (!token) {
+    return res.status(401).json({ valid: false });
+  }
+  
+  const users = await readUsers();
+  const user = users.find(u => u.id === token);
+  
+  if (!user) {
+    return res.status(401).json({ valid: false });
+  }
+  
+  res.json({ 
+    valid: true,
+    user: { 
+      id: user.id, 
+      username: user.username, 
+      displayName: user.displayName 
+    }
+  });
+});
+
+// ==================== Данные ====================
+
 // Получить все данные
 app.get('/api/data', async (req, res) => {
   console.log('📥 GET /api/data');
@@ -197,11 +374,12 @@ app.get('*', (req, res) => {
 });
 
 // Запуск сервера
-initDataFile().then(() => {
+Promise.all([initDataFile(), initUsersFile()]).then(() => {
   app.listen(PORT, () => {
     console.log(`\n🚀 Сервер запущен на http://localhost:${PORT}`);
     console.log(`📊 API доступен на http://localhost:${PORT}/api`);
-    console.log(`💾 Данные хранятся в: ${DATA_FILE}\n`);
+    console.log(`💾 Данные хранятся в: ${DATA_FILE}`);
+    console.log(`👥 Пользователи хранятся в: ${USERS_FILE}\n`);
   });
 }).catch(error => {
   console.error('❌ Ошибка инициализации:', error);

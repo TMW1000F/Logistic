@@ -8,9 +8,10 @@ import SearchAndTags, { FilterTag } from './SearchAndTags';
 interface Props {
   onStatus?: (msg: string) => void;
   darkMode?: boolean;
+  readOnly?: boolean;
 }
 
-export default function ServicesTab({ onStatus, darkMode = false }: Props) {
+export default function ServicesTab({ onStatus, darkMode = false, readOnly = false }: Props) {
   const { state, dispatch } = useStore();
   const toast = useToast();
 
@@ -281,6 +282,7 @@ export default function ServicesTab({ onStatus, darkMode = false }: Props) {
   return (
     <div className="flex flex-col h-full">
       {/* Sticky форма ввода */}
+      {!readOnly && (
       <div className={`flex-shrink-0 rounded-lg p-3 mb-2 ${darkMode ? 'bg-gray-800' : 'bg-white border border-gray-200'}`}>
         {/* Строка 1: Тип услуги, Компания, Количество, Дата */}
         <div className="grid grid-cols-4 gap-2 mb-2">
@@ -358,6 +360,7 @@ export default function ServicesTab({ onStatus, darkMode = false }: Props) {
           </button>
         </div>
       </div>
+      )}
 
       {/* Контейнер: поиск + таблица + итоги */}
       <div className={`flex flex-col flex-1 min-h-0 rounded-lg overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white border border-gray-200'}`}>
@@ -379,6 +382,7 @@ export default function ServicesTab({ onStatus, darkMode = false }: Props) {
           <table className="w-full text-sm">
             <thead className={`sticky top-0 z-10 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
               <tr>
+                {!readOnly && (
                 <th className={`px-2 py-2 text-center w-8 sticky left-0 z-20 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
                   <button onClick={toggleSelectAll}>
                     {filteredRecords.length > 0 && selectedIds.size === filteredRecords.length ? (
@@ -388,6 +392,7 @@ export default function ServicesTab({ onStatus, darkMode = false }: Props) {
                     )}
                   </button>
                 </th>
+                )}
                 <th className={`px-2 py-2 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Тип услуги</th>
                 <th className={`px-2 py-2 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Компания</th>
                 <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Кол-во</th>
@@ -408,7 +413,7 @@ export default function ServicesTab({ onStatus, darkMode = false }: Props) {
                   className={`border-t ${darkMode ? 'border-gray-700 hover:bg-gray-700' : 'hover:bg-gray-50'} ${row.has_high_tariff ? (darkMode ? 'bg-red-900/30' : 'bg-red-50') : ''} ${row.is_group ? (darkMode ? 'bg-green-900/30 font-semibold' : 'bg-green-50 font-semibold') : ''} ${selectedIds.has(row.id) ? (darkMode ? 'bg-green-900/50' : 'bg-green-100') : ''}`}
                 >
                   <td className="px-2 py-1.5 text-center sticky left-0 bg-inherit">
-                    {!row.is_group && (
+                    {!row.is_group && !readOnly && (
                       <input type="checkbox" checked={selectedIds.has(row.id)} onChange={() => toggleSelect(row.id)} />
                     )}
                   </td>
@@ -425,7 +430,7 @@ export default function ServicesTab({ onStatus, darkMode = false }: Props) {
                   </td>
                   <td className="px-2 py-1.5 text-center">{row.has_high_tariff ? `×${row.coefficient}` : '-'}</td>
                   <td className="px-2 py-1.5 text-center">
-                    {!row.is_group && (
+                    {!row.is_group && !readOnly && (
                       <button onClick={() => handleDelete(row.id)} className="text-red-500 hover:text-red-700">
                         <Trash2 size={14} />
                       </button>

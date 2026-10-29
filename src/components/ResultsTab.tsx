@@ -7,9 +7,10 @@ import * as XLSX from 'xlsx';
 interface Props {
   onStatus?: (msg: string) => void;
   darkMode?: boolean;
+  readOnly?: boolean;
 }
 
-export default function ResultsTab({ onStatus, darkMode = false }: Props) {
+export default function ResultsTab({ onStatus, darkMode = false, readOnly = false }: Props) {
   const { state } = useStore();
   const toast = useToast();
 

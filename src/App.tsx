@@ -1,14 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { StoreProvider, useStore } from './store';
 import { ToastProvider, useToast } from './components/Toast';
+import AuthScreen from './components/AuthScreen';
 import AutoTab from './components/AutoTab';
 import ServicesTab from './components/ServicesTab';
 import ResultsTab from './components/ResultsTab';
 import TariffsTab from './components/TariffsTab';
 import StatsTab from './components/StatsTab';
-import { Car, Wrench, BarChart3, DollarSign, TrendingUp, HelpCircle, Save, FolderOpen, FilePlus, Sun, Moon } from 'lucide-react';
+import { Car, Wrench, BarChart3, DollarSign, TrendingUp, HelpCircle, Save, FolderOpen, FilePlus, Sun, Moon, LogOut, Eye } from 'lucide-react';
 import { calcDurationHours, calcAutoCost, calcServiceHours, calcServiceCost, formatDate } from './types';
-import { hasComputerName, setComputerName, getComputerName } from './api';
+import { hasComputerName, setComputerName, getComputerName, isAuthenticated, getCurrentUser, logout, isReadOnlyMode, setReadOnlyMode, verifyToken } from './api';
 
 const APP_NAME = 'Учёт автомобилей';
 const VERSION = '2.0';
@@ -27,7 +28,21 @@ function AppContent() {
   });
   const [showComputerNameDialog, setShowComputerNameDialog] = useState(!hasComputerName());
   const [computerNameInput, setComputerNameInput] = useState('');
+  const [isAuthChecked, setIsAuthChecked] = useState(false);
+  const [isAuthenticatedUser, setIsAuthenticatedUser] = useState(false);
+  const [readOnly, setReadOnly] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Проверка авторизации при загрузке
+  useEffect(() => {
+    const checkAuth = async () => {
+      const user = await verifyToken();
+      setIsAuthenticatedUser(!!user);
+      setReadOnly(isReadOnlyMode());
+      setIsAuthChecked(true);
+    };
+    checkAuth();
+  }, []);
 
   // Показываем ошибку синхронизации
   useEffect(() => {
@@ -79,6 +94,23 @@ function AppContent() {
   const showStatus = (msg: string) => {
     setStatusMessage(msg);
     setTimeout(() => setStatusMessage('Готов к работе'), 3000);
+  };
+
+  // Выход из системы
+  const handleLogout = async () => {
+    if (!confirm('Выйти из системы?')) return;
+    await logout();
+    setIsAuthenticatedUser(false);
+    setReadOnly(false);
+    toast.info('Вы вышли из системы');
+  };
+
+  // Переключение режима только просмотра
+  const handleToggleReadOnly = () => {
+    const newMode = !readOnly;
+    setReadOnly(newMode);
+    setReadOnlyMode(newMode);
+    toast.info(newMode ? 'Режим только для просмотра включён' : 'Режим редактирования включён');
   };
 
   // Сохранение в файл (TSV формат)
@@ -297,6 +329,38 @@ function AppContent() {
   const ActiveComponent = tabs[activeTab].component;
   const totalRecords = state.autoRecords.length + state.serviceRecords.length;
 
+  // Если авторизация ещё не проверена - показываем загрузку
+  if (!isAuthChecked) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
+        <div className={`text-center ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p>Загрузка...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Если пользователь не авторизован - показываем экран авторизации
+  if (!isAuthenticatedUser) {
+    return (
+      <AuthScreen 
+        onAuthSuccess={() => {
+          setIsAuthenticatedUser(true);
+          setReadOnly(false);
+        }}
+        onReadOnlyMode={() => {
+          setReadOnly(true);
+          setReadOnlyMode(true);
+          setIsAuthenticatedUser(true);
+        }}
+        darkMode={darkMode}
+      />
+    );
+  }
+
+  const currentUser = getCurrentUser();
+
   return (
     <div className={`h-screen flex flex-col ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
       {/* Скрытый input для загрузки файлов */}
@@ -330,26 +394,49 @@ function AppContent() {
             >
               {darkMode ? <Sun size={16} /> : <Moon size={16} />}
             </button>
+            {!readOnly && (
+              <>
+                <button
+                  onClick={handleLoad}
+                  className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-sm transition"
+                  title="Загрузить из файла (Ctrl+O)"
+                >
+                  <FolderOpen size={16} /> Загрузить
+                </button>
+                <button
+                  onClick={handleSave}
+                  className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-sm transition"
+                  title="Сохранить в файл (Ctrl+S)"
+                >
+                  <Save size={16} /> Сохранить
+                </button>
+                <button
+                  onClick={handleNew}
+                  className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-sm transition"
+                  title="Новый файл (Ctrl+N)"
+                >
+                  <FilePlus size={16} /> Новый
+                </button>
+              </>
+            )}
             <button
-              onClick={handleLoad}
-              className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-sm transition"
-              title="Загрузить из файла (Ctrl+O)"
+              onClick={handleToggleReadOnly}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded text-sm transition ${
+                readOnly 
+                  ? 'bg-yellow-500/30 hover:bg-yellow-500/40 text-yellow-200' 
+                  : 'bg-white/10 hover:bg-white/20'
+              }`}
+              title={readOnly ? 'Переключить в режим редактирования' : 'Переключить в режим только просмотра'}
             >
-              <FolderOpen size={16} /> Загрузить
+              <Eye size={16} />
+              {readOnly ? 'Просмотр' : 'Редактирование'}
             </button>
             <button
-              onClick={handleSave}
-              className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-sm transition"
-              title="Сохранить в файл (Ctrl+S)"
+              onClick={handleLogout}
+              className="flex items-center gap-1 bg-red-500/20 hover:bg-red-500/30 px-3 py-1.5 rounded text-sm transition"
+              title="Выйти из системы"
             >
-              <Save size={16} /> Сохранить
-            </button>
-            <button
-              onClick={handleNew}
-              className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded text-sm transition"
-              title="Новый файл (Ctrl+N)"
-            >
-              <FilePlus size={16} /> Новый
+              <LogOut size={16} /> Выход
             </button>
           </div>
 
@@ -357,7 +444,12 @@ function AppContent() {
             <div className="text-right text-xs">
               <div className="text-blue-200">Записей: {totalRecords}</div>
               <div>{currentTime.toLocaleString('ru-RU')}</div>
-              <div className="text-blue-200">💻 {getComputerName()}</div>
+              {currentUser && (
+                <div className="text-blue-200">
+                  👤 {currentUser.displayName}
+                  {readOnly && <span className="ml-1 text-yellow-300">(только просмотр)</span>}
+                </div>
+              )}
               {isLoading && (
                 <div className="text-yellow-300">⏳ Загрузка...</div>
               )}
@@ -404,7 +496,7 @@ function AppContent() {
       {/* Содержимое — занимает всё оставшееся место */}
       <main className="flex-1 max-w-full mx-auto px-4 py-4 w-full flex flex-col min-h-0 overflow-hidden">
         <div className="flex-1 min-h-0">
-          <ActiveComponent onStatus={showStatus} darkMode={darkMode} />
+          <ActiveComponent onStatus={showStatus} darkMode={darkMode} readOnly={readOnly} />
         </div>
       </main>
 

@@ -10,6 +10,19 @@ interface LockInfo {
   expiresAt: string;
 }
 
+interface UserInfo {
+  id: string;
+  username: string;
+  displayName: string;
+}
+
+interface AuthResponse {
+  success: boolean;
+  token?: string;
+  user?: UserInfo;
+  error?: string;
+}
+
 // Генерация уникального ID пользователя (на основе браузера)
 function generateUserId(): string {
   const stored = localStorage.getItem('userId');
@@ -47,6 +60,132 @@ export function hasComputerName(): boolean {
 export const userId = generateUserId();
 export let computerName = getComputerName();
 
+// ==================== Авторизация ====================
+
+// Получить текущего пользователя из localStorage
+export function getCurrentUser(): UserInfo | null {
+  const token = localStorage.getItem('authToken');
+  const userStr = localStorage.getItem('currentUser');
+  if (token && userStr) {
+    try {
+      return JSON.parse(userStr);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+// Проверить, авторизован ли пользователь
+export function isAuthenticated(): boolean {
+  return !!localStorage.getItem('authToken');
+}
+
+// Проверить, в режиме ли только просмотра
+export function isReadOnlyMode(): boolean {
+  return localStorage.getItem('readOnlyMode') === 'true';
+}
+
+// Установить режим только просмотра
+export function setReadOnlyMode(enabled: boolean): void {
+  if (enabled) {
+    localStorage.setItem('readOnlyMode', 'true');
+  } else {
+    localStorage.removeItem('readOnlyMode');
+  }
+}
+
+// Регистрация
+export async function register(username: string, password: string, displayName: string): Promise<AuthResponse> {
+  try {
+    const response = await fetch(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password, displayName })
+    });
+    
+    const result = await response.json();
+    
+    if (result.success && result.token && result.user) {
+      localStorage.setItem('authToken', result.token);
+      localStorage.setItem('currentUser', JSON.stringify(result.user));
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('Ошибка register:', error);
+    return { success: false, error: 'Ошибка соединения с сервером' };
+  }
+}
+
+// Вход
+export async function login(username: string, password: string): Promise<AuthResponse> {
+  try {
+    const response = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    
+    const result = await response.json();
+    
+    if (result.success && result.token && result.user) {
+      localStorage.setItem('authToken', result.token);
+      localStorage.setItem('currentUser', JSON.stringify(result.user));
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('Ошибка login:', error);
+    return { success: false, error: 'Ошибка соединения с сервером' };
+  }
+}
+
+// Выход
+export async function logout(): Promise<void> {
+  const token = localStorage.getItem('authToken');
+  
+  try {
+    if (token) {
+      await fetch(`${API_BASE}/auth/logout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+    }
+  } catch (error) {
+    console.error('Ошибка logout:', error);
+  }
+  
+  localStorage.removeItem('authToken');
+  localStorage.removeItem('currentUser');
+  localStorage.removeItem('readOnlyMode');
+}
+
+// Проверка токена
+export async function verifyToken(): Promise<UserInfo | null> {
+  const token = localStorage.getItem('authToken');
+  
+  if (!token) return null;
+  
+  try {
+    const response = await fetch(`${API_BASE}/auth/verify?token=${token}`);
+    const result = await response.json();
+    
+    if (result.valid && result.user) {
+      localStorage.setItem('currentUser', JSON.stringify(result.user));
+      return result.user;
+    } else {
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('currentUser');
+      return null;
+    }
+  } catch (error) {
+    console.error('Ошибка verifyToken:', error);
+    return null;
+  }
+}
+
 // ==================== API функции ====================
 
 // Получить все данные
@@ -72,13 +211,19 @@ export async function fetchData(): Promise<AppState> {
 
 // Обновить все данные
 export async function updateData(data: AppState, userIdParam?: string, computerNameParam?: string): Promise<{ success: boolean; lockInfo?: LockInfo }> {
+  // В режиме только просмотра не отправляем данные
+  if (isReadOnlyMode()) {
+    return { success: true };
+  }
+  
   try {
+    const currentUser = getCurrentUser();
     const response = await fetch(`${API_BASE}/data`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
-        userId: userIdParam || userId, 
-        computerName: computerNameParam || getComputerName(), 
+        userId: userIdParam || currentUser?.id || userId, 
+        computerName: computerNameParam || currentUser?.displayName || getComputerName(), 
         data 
       })
     });
