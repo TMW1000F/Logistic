@@ -95,6 +95,8 @@ export async function register(username: string, password: string, displayName: 
     if (result.success && result.token && result.user) {
       localStorage.setItem('authToken', result.token);
       localStorage.setItem('currentUser', JSON.stringify(result.user));
+      // Очищаем старый userId из localStorage
+      localStorage.removeItem('userId');
     }
     
     return result;
@@ -118,6 +120,8 @@ export async function login(username: string, password: string): Promise<AuthRes
     if (result.success && result.token && result.user) {
       localStorage.setItem('authToken', result.token);
       localStorage.setItem('currentUser', JSON.stringify(result.user));
+      // Очищаем старый userId из localStorage
+      localStorage.removeItem('userId');
     }
     
     return result;

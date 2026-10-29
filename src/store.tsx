@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode, useState } from 'react';
 import { AppState, CarRecord, ServiceRecord, Tariff } from './types';
-import { fetchData, updateData, startLockExtension, stopLockExtension, setupLockRelease, userId, getComputerName, getLockInfo, getCurrentUser } from './api';
+import { fetchData, updateData, startLockExtension, stopLockExtension, setupLockRelease, getLockInfo, getCurrentUser } from './api';
 
 // ==================== Начальное состояние ====================
 const initialState: AppState = {
@@ -148,9 +148,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const timeout = setTimeout(async () => {
       try {
         const currentUser = getCurrentUser();
-        const displayName = currentUser?.displayName || getComputerName();
-        // Используем ID авторизованного пользователя, а не старый userId из localStorage
-        const authUserId = currentUser?.id || userId;
+        
+        // Если пользователь не авторизован, НЕ устанавливаем блокировку
+        if (!currentUser) {
+          console.log('Пользователь не авторизован, пропускаем синхронизацию с сервером');
+          // Сохраняем только в localStorage как backup
+          localStorage.setItem('car_accounting_data', JSON.stringify(state));
+          return;
+        }
+        
+        const displayName = currentUser.displayName;
+        const authUserId = currentUser.id;
         const result = await updateData(state, authUserId, displayName);
         if (result.success) {
           startLockExtension();
