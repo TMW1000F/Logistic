@@ -37,6 +37,11 @@ const DATA_FILE = path.join(__dirname, 'data.json');
 const LOCK_FILE = path.join(__dirname, 'lock.json');
 const USERS_FILE = path.join(__dirname, 'users.json');
 
+// Таймаут неактивности блокировки: 5 минут.
+// Если держатель блокировки не продлевает её (нет активности) дольше этого времени,
+// сервер сам очищает файл блокировки.
+const LOCK_TIMEOUT_MS = 5 * 60 * 1000;
+
 console.log('📁 Путь к файлу данных:', DATA_FILE);
 console.log('📁 Путь к файлу блокировки:', LOCK_FILE);
 console.log('📁 Путь к файлу пользователей:', USERS_FILE);
@@ -125,55 +130,77 @@ async function writeData(data) {
   }
 }
 
-// Проверка блокировки
+// Проверка блокировки.
+// Логика «живого» таймера: блокировка считается действующей, пока держатель
+// регулярно продлевает её (heartbeats при активности). Если lastActivity старше
+// LOCK_TIMEOUT_MS (5 минут бездействия) — сервер сам очищает файл блокировки.
 async function checkLock() {
   try {
-    await fs.access(LOCK_FILE);
     const lockData = await fs.readFile(LOCK_FILE, 'utf-8');
     const lock = JSON.parse(lockData);
-    
-    // Проверяем, не истекла ли блокировка
-    if (new Date(lock.expiresAt) < new Date()) {
-      console.log('⏰ Блокировка истекла, удаляю...');
-      await fs.unlink(LOCK_FILE);
+
+    const lastTouch = new Date(lock.lastActivity || lock.lockedAt).getTime();
+    // Небольшой grace (1 сек), чтобы не рвать блокировку из-за дребезга часов
+    if (Date.now() - lastTouch > LOCK_TIMEOUT_MS + 1000) {
+      console.log('⏰ Блокировка протухла (нет активности > 5 минут), сервер очищает файл...');
+      await fs.unlink(LOCK_FILE).catch(() => {});
       return null;
     }
-    
+
     return lock;
   } catch {
+    // Файла нет или он повреждён — блокировки нет
     return null;
   }
 }
 
-// Установка блокировки
-async function setLock(userId, computerName) {
+// Занять блокировку. Возвращает:
+//   { status: 'acquired' }  — записей не было, создали новую под этим пользователем
+//   { status: 'renewed' }   — запись наша, обновили таймер активности
+//   { status: 'locked', lock } — блокировка принадлежит другому активному пользователю
+async function acquireLock(userId, computerName) {
   const existingLock = await checkLock();
-  
+
   if (existingLock && existingLock.userId !== userId) {
-    console.log('🔒 Попытка блокировки отклонена - уже заблокировано');
-    return false;
+    console.log('🔒 Блокировка занята другим пользователем');
+    return { status: 'locked', lock: existingLock };
   }
-  
-  const lock = {
-    userId,
-    computerName,
-    lockedAt: new Date().toISOString(),
-    expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString()
-  };
-  
+
+  const now = new Date().toISOString();
+  const lock = existingLock
+    ? { ...existingLock, lastActivity: now } // свой замок — просто обновляем таймер
+    : { userId, computerName, lockedAt: now, lastActivity: now };
+
   await fs.writeFile(LOCK_FILE, JSON.stringify(lock, null, 2));
-  console.log(`🔒 Блокировка установлена: ${computerName} (${userId})`);
-  return true;
+  console.log(existingLock
+    ? `🔄 Таймер блокировки обновлён: ${computerName} (${userId})`
+    : `🔒 Блокировка установлена: ${computerName} (${userId})`);
+  return { status: existingLock ? 'renewed' : 'acquired', lock };
 }
 
-// Освобождение блокировки
+// Освобождение блокировки (снимает только владелец)
 async function releaseLock(userId) {
-  const lock = await checkLock();
-  if (lock && lock.userId === userId) {
-    await fs.unlink(LOCK_FILE);
-    console.log('🔓 Блокировка освобождена');
+  try {
+    const lockData = await fs.readFile(LOCK_FILE, 'utf-8');
+    const lock = JSON.parse(lockData);
+    if (lock.userId === userId) {
+      await fs.unlink(LOCK_FILE);
+      console.log('🔓 Блокировка освобождена');
+    }
+  } catch {
+    // файла нет — освобождать нечего
   }
 }
+
+// Фоновый «уборщик»: если приложение упало и не очистило файл,
+// сервер сам снимает блокировку после 5 минут без активности.
+setInterval(async () => {
+  try {
+    await checkLock();
+  } catch (e) {
+    console.error('Ошибка фонового контроля блокировки:', e);
+  }
+}, 60 * 1000);
 
 // ==================== API Endpoints ====================
 
@@ -324,14 +351,13 @@ app.post('/api/data', async (req, res) => {
     return res.status(400).json({ error: 'userId и computerName обязательны' });
   }
   
-  // Пытаемся установить блокировку
-  const locked = await setLock(userId, computerName);
-  if (!locked) {
-    const existingLock = await checkLock();
+  // Занимаем/продлеваем блокировку
+  const lockResult = await acquireLock(userId, computerName);
+  if (lockResult.status === 'locked') {
     console.log('🔒 Данные заблокированы другим пользователем');
     return res.status(403).json({ 
       error: 'Данные заблокированы другим пользователем',
-      lockInfo: existingLock
+      lockInfo: lockResult.lock
     });
   }
   
@@ -366,7 +392,9 @@ app.post('/api/lock/release', async (req, res) => {
   res.json({ success: true });
 });
 
-// Продлить блокировку
+// Продлить (обновить таймер) блокировки — heartbeat активности.
+// Вызывается при каждом реальном действии пользователя (клик/клавиша/сохранение),
+// а не по расписанию: молчащий клиент = неактивный клиент.
 app.post('/api/lock/extend', async (req, res) => {
   const { userId } = req.body;
   
@@ -374,14 +402,11 @@ app.post('/api/lock/extend', async (req, res) => {
     return res.status(400).json({ error: 'userId обязателен' });
   }
   
-  const lock = await checkLock();
-  if (lock && lock.userId === userId) {
-    lock.expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-    await fs.writeFile(LOCK_FILE, JSON.stringify(lock, null, 2));
-    console.log('⏰ Блокировка продлена');
-    res.json({ success: true });
-  } else {
+  const lockResult = await acquireLock(userId, null);
+  if (lockResult.status === 'locked') {
     res.status(403).json({ error: 'Блокировка не найдена или принадлежит другому пользователю' });
+  } else {
+    res.json({ success: true });
   }
 });
 

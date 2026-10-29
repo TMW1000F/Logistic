@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode, useState } from 'react';
 import { AppState, CarRecord, ServiceRecord, Tariff } from './types';
-import { fetchData, updateData, startLockExtension, stopLockExtension, setupLockRelease, getLockInfo, getCurrentUser } from './api';
+import { fetchData, updateData, setupLockRelease, getLockInfo, getCurrentUser } from './api';
 
 // ==================== Начальное состояние ====================
 const initialState: AppState = {
@@ -106,13 +106,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setupLockRelease();
   }, []);
 
-  // Периодическая проверка статуса блокировки
+  // Периодическая проверка статуса блокировки.
+  // Если блокировка принадлежит НАМ — сервер обновляет таймер (продление блокировки
+  // привязана к активности клиента). Если держит ДРУГОЙ пользователь — isLocked=true,
+  // приложение перейдёт в режим только чтение.
   useEffect(() => {
     async function checkLockStatus() {
       try {
         const lockStatus = await getLockInfo();
+        const currentUser = getCurrentUser();
         if (lockStatus.locked && lockStatus.lockInfo) {
-          setIsLocked(true);
+          const ours = currentUser && lockStatus.lockInfo.userId === currentUser.id;
+          setIsLocked(!ours); // наша блокировка не считается «закрытой» для этого клиента
           setLockInfo({
             userId: lockStatus.lockInfo.userId,
             computerName: lockStatus.lockInfo.computerName
@@ -161,7 +166,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const authUserId = currentUser.id;
         const result = await updateData(state, authUserId, displayName);
         if (result.success) {
-          startLockExtension();
           setIsLocked(false);
           setLockInfo(null);
           setError(null);
@@ -190,13 +194,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (timeout) clearTimeout(timeout);
     };
   }, [state, isLoading, hasLoaded]);
-
-  // Остановка продления блокировки при размонтировании
-  useEffect(() => {
-    return () => {
-      stopLockExtension();
-    };
-  }, []);
 
   // Функция для принудительной синхронизации
   const syncToServer = async (): Promise<boolean> => {

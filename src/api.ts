@@ -253,74 +253,128 @@ export async function releaseLock(): Promise<void> {
   }
 }
 
-// Продлить блокировку
-export async function extendLock(): Promise<void> {
+// ==================== Отслеживание активности ====================
+//
+// Логика:
+//  - блокировка продлевается (heartbeat) только при РЕАЛЬНЫХ действиях пользователя
+//    (клики, клавиши, скролл — движения мыши НЕ считаются);
+//  - heartbeat отправляется не чаще одного раза в HEARTBEAT_MIN_INTERVAL;
+//  - если пользователь молчит INACTIVITY_RELEASE_TIME (5 минут), приложение само
+//    снимает блокировку и переходит в режим «только чтение»;
+//  - сервер независимо чистит протухший lock.json (нет активности > 5 минут).
+
+let lastActivityTime = Date.now();
+let releaseTimeout: ReturnType<typeof setTimeout> | null = null;
+let onReleaseCallback: (() => void) | null = null;
+let isHoldingLock = false;
+let lastHeartbeatSentAt = 0;
+
+const HEARTBEAT_MIN_INTERVAL = 60 * 1000; // не чаще раза в минуту
+const INACTIVITY_RELEASE_TIME = 5 * 60 * 1000; // 5 минут без действий — снимаем блокировку
+
+function getCurrentAuthUserId(): string | null {
+  const currentUser = getCurrentUser();
+  return currentUser?.id || null;
+}
+
+// Отправить heartbeat: обновить таймер блокировки на сервере
+async function sendHeartbeat() {
+  const authUserId = getCurrentAuthUserId();
+  if (!authUserId) return;
+
   try {
-    await fetch(`${API_BASE}/lock/extend`, {
+    const response = await fetch(`${API_BASE}/lock/extend`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId })
+      body: JSON.stringify({ userId: authUserId })
     });
+    if (response.ok) {
+      isHoldingLock = true;
+    } else {
+      // Блокировка больше наша (сервер снял её или занял другой) — выходим из режима записи
+      isHoldingLock = false;
+      if (onReleaseCallback) onReleaseCallback();
+    }
   } catch (error) {
     console.error('Ошибка extendLock:', error);
   }
 }
 
-// ==================== Отслеживание активности ====================
-
-let lastActivityTime = Date.now();
-let warningTimeout: ReturnType<typeof setTimeout> | null = null;
-let releaseTimeout: ReturnType<typeof setTimeout> | null = null;
-let onWarningCallback: (() => void) | null = null;
-let onReleaseCallback: (() => void) | null = null;
-
-const WARNING_TIME = 5 * 60 * 1000; // 5 минут до предупреждения
-const RELEASE_TIME = 60 * 1000; // 1 минута после предупреждения до снятия
-
-// Обновление времени последней активности
+// Обновление времени последней активности (клик/клавиша/скролл)
 export function updateActivity() {
   lastActivityTime = Date.now();
-  
-  // Сбрасываем таймеры если они были установлены
-  if (warningTimeout) {
-    clearTimeout(warningTimeout);
-    warningTimeout = null;
-  }
+
+  // Сбрасываем таймер снятия блокировки
   if (releaseTimeout) {
     clearTimeout(releaseTimeout);
     releaseTimeout = null;
   }
-  
-  // Запускаем новые таймеры
-  startInactivityTimers();
+
+  // Продлеваем блокировку (с троттлингом)
+  if (Date.now() - lastHeartbeatSentAt >= HEARTBEAT_MIN_INTERVAL) {
+    lastHeartbeatSentAt = Date.now();
+    sendHeartbeat();
+  }
+
+  startInactivityTimer();
 }
 
-// Запуск таймеров неактивности
-function startInactivityTimers() {
-  // Таймер предупреждения (через 5 минут)
-  warningTimeout = setTimeout(() => {
-    if (onWarningCallback) {
-      onWarningCallback();
+// Запуск таймера неактивности: через 5 минут без ДЕЙСТВИЙ снимаем блокировку
+function startInactivityTimer() {
+  releaseTimeout = setTimeout(async () => {
+    await releaseLock();
+    isHoldingLock = false;
+    if (onReleaseCallback) {
+      onReleaseCallback();
     }
-    
-    // Таймер снятия блокировки (через 1 минуту после предупреждения)
-    releaseTimeout = setTimeout(async () => {
-      await releaseLock();
-      if (onReleaseCallback) {
-        onReleaseCallback();
-      }
-    }, RELEASE_TIME);
-  }, WARNING_TIME);
+  }, INACTIVITY_RELEASE_TIME);
 }
 
-// Установка callback для предупреждения
-export function setWarningCallback(callback: () => void) {
-  onWarningCallback = callback;
-}
-
-// Установка callback для снятия блокировки
+// Установка callback для снятия блокировки из-за неактивности
 export function setReleaseCallback(callback: () => void) {
   onReleaseCallback = callback;
+}
+
+// Начало отслеживания активности.
+// events — список событий, которые считаются «действием пользователя».
+// По умолчанию: клики, клавиши, скролл, тач. ДВИЖЕНИЯ МЫШИ НЕ СЧИТАЮТСЯ.
+export function startActivityTracking(events: string[] = ['mousedown', 'keydown', 'scroll', 'touchstart']) {
+  events.forEach(event => {
+    window.addEventListener(event, updateActivity, { passive: true });
+  });
+
+  // Инициализация таймеров
+  updateActivity();
+}
+
+// Остановка отслеживания активности
+export function stopActivityTracking() {
+  if (releaseTimeout) {
+    clearTimeout(releaseTimeout);
+    releaseTimeout = null;
+  }
+}
+
+// Явно занять блокировку при старте приложения (сразу БЛОКИРУЕМ, если свободно).
+// Возвращает true, если блокировка наша (режим записи),
+// false — если её держит другой пользователь (режим только чтение).
+export async function acquireLockOnStart(): Promise<boolean> {
+  const currentUser = getCurrentUser();
+  if (!currentUser) return false;
+
+  try {
+    const result = await checkLockStatus();
+    if (result.locked && result.lockInfo && result.lockInfo.userId !== currentUser.id) {
+      return false; // чужая активная блокировка
+    }
+    // Свободно или наша — занимаем/продлеваем
+    lastHeartbeatSentAt = Date.now();
+    await sendHeartbeat();
+    return isHoldingLock;
+  } catch (error) {
+    console.error('Ошибка acquireLockOnStart:', error);
+    return false;
+  }
 }
 
 // Проверка, есть ли активная блокировка от другого пользователя
@@ -332,49 +386,6 @@ export async function checkLockStatus(): Promise<{ locked: boolean; lockInfo: an
   } catch (error) {
     console.error('Ошибка проверки блокировки:', error);
     return { locked: false, lockInfo: null };
-  }
-}
-
-// Начало отслеживания активности
-export function startActivityTracking() {
-  // Слушатели событий активности
-  const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart'];
-  
-  events.forEach(event => {
-    window.addEventListener(event, updateActivity, { passive: true });
-  });
-  
-  // Инициализация таймеров
-  updateActivity();
-}
-
-// Остановка отслеживания активности
-export function stopActivityTracking() {
-  if (warningTimeout) {
-    clearTimeout(warningTimeout);
-    warningTimeout = null;
-  }
-  if (releaseTimeout) {
-    clearTimeout(releaseTimeout);
-    releaseTimeout = null;
-  }
-}
-
-// Автоматическое продление блокировки каждые 10 минут
-let lockInterval: ReturnType<typeof setInterval> | null = null;
-
-export function startLockExtension() {
-  if (lockInterval) return;
-  
-  lockInterval = setInterval(() => {
-    extendLock();
-  }, 10 * 60 * 1000); // Каждые 10 минут
-}
-
-export function stopLockExtension() {
-  if (lockInterval) {
-    clearInterval(lockInterval);
-    lockInterval = null;
   }
 }
 

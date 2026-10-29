@@ -18,10 +18,8 @@ import {
   verifyToken,
   startActivityTracking,
   stopActivityTracking,
-  setWarningCallback,
   setReleaseCallback,
-  checkLockStatus,
-  updateActivity
+  acquireLockOnStart,
 } from './api';
 
 const APP_NAME = 'Учёт автомобилей';
@@ -44,16 +42,24 @@ function AppContent() {
   const [isAuthChecked, setIsAuthChecked] = useState(false);
   const [isAuthenticatedUser, setIsAuthenticatedUser] = useState(false);
   const [readOnly, setReadOnly] = useState(false);
-  const [showInactivityWarning, setShowInactivityWarning] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Проверка авторизации при загрузке
+  // Проверка авторизации при загрузке + занятие блокировки по схеме:
+  //  - нет записи в файле блокировки -> запускаемся штатно и СРАЗУ блокируем (создаём запись)
+  //  - запись есть и наша -> запускаемся штатно и обновляем таймер блокировки
+  //  - запись чужая -> запускаемся в режиме только чтение
   useEffect(() => {
     const checkAuth = async () => {
       const user = await verifyToken();
       if (user) {
         setIsAuthenticatedUser(true);
-        setReadOnly(false);
+        const acquired = await acquireLockOnStart();
+        if (acquired) {
+          setReadOnly(false);
+        } else {
+          setReadOnly(true);
+          toast.error('🔒 Данные заблокированы другим пользователем. Режим только для чтения.');
+        }
       } else {
         setIsAuthenticatedUser(false);
         setReadOnly(false);
@@ -63,80 +69,46 @@ function AppContent() {
     checkAuth();
   }, []);
 
-  // Проверка блокировки файла другим пользователем
+  // Если во время работы другой пользователь занял блокировку — переходим в режим
+  // только чтение. Если блокировка свободна, а мы авторизованы и в read-only —
+  // просим сервер очистить файл блокировки и занимаем её сами.
   useEffect(() => {
-    if (isLocked && lockInfo && isAuthenticatedUser && !readOnly) {
+    if (!isAuthenticatedUser) return;
+
+    if (isLocked && lockInfo) {
       const currentUser = getCurrentUser();
-      // Если файл заблокирован ДРУГИМ пользователем
-      if (currentUser && lockInfo.userId !== currentUser.id) {
+      if (currentUser && lockInfo.userId !== currentUser.id && !readOnly) {
         setReadOnly(true);
         toast.error(`🔒 Файл заблокирован пользователем: ${lockInfo.computerName}. Режим только для чтения.`);
       }
+    } else if (!isLocked && readOnly) {
+      // Сервер не очистил файл блокировки (или замок протух) — пробуем занять снова
+      acquireLockOnStart().then((acquired) => {
+        if (acquired) {
+          setReadOnly(false);
+          toast.success('✅ Блокировка получена, можно редактировать');
+        }
+      });
     }
   }, [isLocked, lockInfo, isAuthenticatedUser, readOnly]);
 
-  // Отслеживание активности пользователя
+  // Мониторинг действий пользователя:
+  //  - активность (клики/клавиши/скролл, БЕЗ движений мыши) продлевает блокировку;
+  //  - если 5 минут ничего не нажимали — снимаем блокировку и уходим в только чтение.
   useEffect(() => {
     if (!isAuthenticatedUser || readOnly) return;
 
-    // Настраиваем callback для предупреждения
-    setWarningCallback(() => {
-      setShowInactivityWarning(true);
-      toast.warning('⚠️ Блокировка будет снята через 1 минуту из-за неактивности');
-    });
-
-    // Настраиваем callback для снятия блокировки
     setReleaseCallback(() => {
-      setShowInactivityWarning(false);
-      toast.info('🔓 Блокировка снята из-за неактивности');
+      setReadOnly(true);
+      toast.info('🔓 Блокировка снята из-за неактивности. Режим только для чтения.');
     });
 
-    // Запускаем отслеживание активности
     startActivityTracking();
 
-    // Очистка при размонтировании
     return () => {
       stopActivityTracking();
     };
   }, [isAuthenticatedUser, readOnly]);
-
-  // При возврате активности проверяем статус блокировки
-  useEffect(() => {
-    if (!isAuthenticatedUser || readOnly) return;
-
-    const handleActivity = async () => {
-      // Обновляем активность
-      updateActivity();
-      
-      // Если было показано предупреждение, значит была неактивность
-      if (showInactivityWarning) {
-        setShowInactivityWarning(false);
-        
-        // Проверяем, не заблокировал ли кто-то данные
-        const lockStatus = await checkLockStatus();
-        
-        if (lockStatus.locked && lockStatus.lockInfo) {
-          // Кто-то заблокировал данные
-          toast.error(`🔒 Данные заблокированы пользователем: ${lockStatus.lockInfo.computerName}`);
-        } else {
-          // Блокировка свободна, можно продолжать работу
-          toast.success('✅ Блокировка восстановлена, можно продолжать работу');
-        }
-      }
-    };
-
-    // Слушаем события активности
-    const events = ['mousedown', 'keydown', 'scroll'];
-    events.forEach(event => {
-      window.addEventListener(event, handleActivity, { passive: true });
-    });
-
-    return () => {
-      events.forEach(event => {
-        window.removeEventListener(event, handleActivity);
-      });
-    };
-  }, [showInactivityWarning, isAuthenticatedUser, readOnly]);
 
   // Показываем ошибку синхронизации
   useEffect(() => {
@@ -687,19 +659,6 @@ function AppContent() {
         </div>
       )}
 
-      {/* Предупреждение о неактивности */}
-      {showInactivityWarning && (
-        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 animate-pulse">
-          <div className="bg-orange-500 text-white px-6 py-4 rounded-lg shadow-2xl flex items-center gap-3">
-            <span className="text-2xl">⚠️</span>
-            <div>
-              <p className="font-bold">Внимание!</p>
-              <p className="text-sm">Блокировка будет снята через 1 минуту из-за неактивности</p>
-              <p className="text-xs mt-1 opacity-90">Совершите любое действие для отмены</p>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
