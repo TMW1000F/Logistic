@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode, useState } from 'react';
 import { AppState, CarRecord, ServiceRecord, Tariff } from './types';
-import { fetchData, updateData, startLockExtension, stopLockExtension, setupLockRelease, userId, getComputerName } from './api';
+import { fetchData, updateData, startLockExtension, stopLockExtension, setupLockRelease, userId, getComputerName, getLockInfo } from './api';
 
 // ==================== Начальное состояние ====================
 const initialState: AppState = {
@@ -102,6 +102,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     
     loadFromServer();
     setupLockRelease();
+  }, []);
+
+  // Периодическая проверка статуса блокировки
+  useEffect(() => {
+    async function checkLockStatus() {
+      try {
+        const lockStatus = await getLockInfo();
+        if (lockStatus.locked && lockStatus.lockInfo) {
+          setIsLocked(true);
+          setLockInfo({
+            userId: lockStatus.lockInfo.userId,
+            computerName: lockStatus.lockInfo.computerName
+          });
+        } else {
+          setIsLocked(false);
+          setLockInfo(null);
+        }
+      } catch (err) {
+        console.error('Ошибка проверки статуса блокировки:', err);
+      }
+    }
+
+    // Проверяем сразу при загрузке
+    checkLockStatus();
+
+    // Затем проверяем каждые 5 секунд
+    const interval = setInterval(checkLockStatus, 5000);
+
+    return () => clearInterval(interval);
   }, []);
 
   // Автосохранение на сервер при изменении состояния (с debounce)
