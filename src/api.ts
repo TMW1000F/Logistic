@@ -256,28 +256,36 @@ export async function releaseLock(): Promise<void> {
 // ==================== Отслеживание активности ====================
 //
 // Логика:
-//  - блокировка продлевается (heartbeat) только при РЕАЛЬНЫХ действиях пользователя
+//  - блокировка продлевается (heartbeat) при РЕАЛЬНЫХ действиях пользователя
 //    (клики, клавиши, скролл — движения мыши НЕ считаются);
-//  - heartbeat отправляется не чаще одного раза в HEARTBEAT_MIN_INTERVAL;
-//  - если пользователь молчит INACTIVITY_RELEASE_TIME (5 минут), приложение само
-//    снимает блокировку и переходит в режим «только чтение»;
-//  - сервер независимо чистит протухший lock.json (нет активности > 5 минут).
+//  - пока пользователь авторизован и держит замок, heartbeat отправляется
+//    также фоновым таймером каждые HEARTBEAT_INTERVAL_MS. Это исключает
+//    «мигание» блокировки: раньше замок держался несколько секунд и слетал,
+//    потому что сервер считал его протухшим, а клиент продлевал редко;
+//  - если пользователь молчит INACTIVITY_RELEASE_TIME (5 минут), приложение
+//    само снимает блокировку и переходит в режим «только чтение»;
+//  - сервер независимо чистит протухший lock.json (нет активности > 5 минут);
+//  - сетевые сбои НЕ считаются потерей блокировки: ошибка fetch не приводит
+//    к read-only, решение принимает только реальный статус с сервера (403).
 
-let lastActivityTime = Date.now();
 let releaseTimeout: ReturnType<typeof setTimeout> | null = null;
+let lastActivitySeenAt = Date.now();
 let onReleaseCallback: (() => void) | null = null;
 let isHoldingLock = false;
 let lastHeartbeatSentAt = 0;
+let heartbeatIntervalId: ReturnType<typeof setInterval> | null = null;
 
-const HEARTBEAT_MIN_INTERVAL = 60 * 1000; // не чаще раза в минуту
+const HEARTBEAT_MIN_INTERVAL = 15 * 1000; // не чаще раза в 15 секунд
+const HEARTBEAT_INTERVAL_MS = 60 * 1000;  // фоновый heartbeat: раз в минуту
 const INACTIVITY_RELEASE_TIME = 5 * 60 * 1000; // 5 минут без действий — снимаем блокировку
+const LOCK_STALE_MS = 7 * 60 * 1000; // столько же, сколько даёт сервер (5 мин + запас на часы/сети)
 
 function getCurrentAuthUserId(): string | null {
   const currentUser = getCurrentUser();
   return currentUser?.id || null;
 }
 
-// Отправить heartbeat: обновить таймер блокировки на сервере
+// Отправить heartbeat: обновить таймер блокировки на сервере.
 async function sendHeartbeat() {
   const authUserId = getCurrentAuthUserId();
   if (!authUserId) return;
@@ -290,20 +298,32 @@ async function sendHeartbeat() {
     });
     if (response.ok) {
       isHoldingLock = true;
-    } else {
-      // Блокировка больше наша (сервер снял её или занял другой) — выходим из режима записи
+    } else if (response.status === 403) {
+      // Сервер явно сказал: замок не наш (снят или занят другим) — выходим из режима записи
       isHoldingLock = false;
+      let lockInfo: any = null;
+      try { lockInfo = (await response.json()).lockInfo ?? null; } catch {}
+      if (lockLostCallback) lockLostCallback(lockInfo);
       if (onReleaseCallback) onReleaseCallback();
     }
+    // Другие статусы (5xx и т.п.) — временная проблема сервера, блокировку НЕ рвём
   } catch (error) {
+    // Сеть недоступна — это НЕ мгновенная потеря блокировки: кратковременные сбои
+    // не должны ронять режим записи (раньше из-за этого замок «мигал»).
+    // Но если продлить замок не удаётся дольше LOCK_STALE_MS, считаем, что сервер
+    // уже очистил наш протухший файл, и отпускаем режим записи.
     console.error('Ошибка extendLock:', error);
+    if (Date.now() - lastHeartbeatSentAt > LOCK_STALE_MS) {
+      isHoldingLock = false;
+      if (lockLostCallback) lockLostCallback(null);
+      if (onReleaseCallback) onReleaseCallback();
+    }
   }
 }
 
 // Обновление времени последней активности (клик/клавиша/скролл)
 export function updateActivity() {
-  lastActivityTime = Date.now();
-
+  lastActivitySeenAt = Date.now();
   // Сбрасываем таймер снятия блокировки
   if (releaseTimeout) {
     clearTimeout(releaseTimeout);
@@ -324,10 +344,29 @@ function startInactivityTimer() {
   releaseTimeout = setTimeout(async () => {
     await releaseLock();
     isHoldingLock = false;
+    if (lockLostCallback) lockLostCallback(null);
     if (onReleaseCallback) {
       onReleaseCallback();
     }
   }, INACTIVITY_RELEASE_TIME);
+}
+
+// Фоновый heartbeat: держит замок живым, пока открыто приложение и пользователь
+// авторизован. Останавливается при выходе/размонтировании экрана.
+function startHeartbeatInterval() {
+  stopHeartbeatInterval();
+  heartbeatIntervalId = setInterval(() => {
+    if (!getCurrentAuthUserId()) return;
+    lastHeartbeatSentAt = Date.now();
+    sendHeartbeat();
+  }, HEARTBEAT_INTERVAL_MS);
+}
+
+function stopHeartbeatInterval() {
+  if (heartbeatIntervalId) {
+    clearInterval(heartbeatIntervalId);
+    heartbeatIntervalId = null;
+  }
 }
 
 // Установка callback для снятия блокировки из-за неактивности
@@ -345,6 +384,7 @@ export function startActivityTracking(events: string[] = ['mousedown', 'keydown'
 
   // Инициализация таймеров
   updateActivity();
+  startHeartbeatInterval();
 }
 
 // Остановка отслеживания активности
@@ -353,6 +393,11 @@ export function stopActivityTracking() {
     clearTimeout(releaseTimeout);
     releaseTimeout = null;
   }
+  stopHeartbeatInterval();
+  window.removeEventListener('mousedown', updateActivity);
+  window.removeEventListener('keydown', updateActivity);
+  window.removeEventListener('scroll', updateActivity);
+  window.removeEventListener('touchstart', updateActivity);
 }
 
 // Явно занять блокировку при старте приложения (сразу БЛОКИРУЕМ, если свободно).
@@ -370,6 +415,17 @@ export async function acquireLockOnStart(): Promise<boolean> {
     // Свободно или наша — занимаем/продлеваем
     lastHeartbeatSentAt = Date.now();
     await sendHeartbeat();
+    if (!isHoldingLock) {
+      // Первая попытка могла сорваться из-за кратковременного сетевого сбоя —
+      // повторяем один раз, чтобы старт не уходил ложно в read-only.
+      await new Promise(r => setTimeout(r, 500));
+      await sendHeartbeat();
+    }
+    if (isHoldingLock) {
+      if (lockAcquiredCallback) lockAcquiredCallback();
+    } else if (result.locked && result.lockInfo && lockLostCallback) {
+      lockLostCallback(result.lockInfo);
+    }
     return isHoldingLock;
   } catch (error) {
     console.error('Ошибка acquireLockOnStart:', error);
@@ -385,8 +441,29 @@ export async function checkLockStatus(): Promise<{ locked: boolean; lockInfo: an
     return result;
   } catch (error) {
     console.error('Ошибка проверки блокировки:', error);
-    return { locked: false, lockInfo: null };
+    return { locked: false, lockInfo: null }
   }
+}
+
+// ==================== Централизованный статус блокировки ====================
+//
+// Единый источник правды для App/store о том, что происходит с замком.
+// Раньше App сам решал «зайти/выйти из read-only» по 5-секундным опросам store,
+// а api.ts — по heartbeat-ответам; эти два контура противоречили друг другу и
+// блокировка «мигала» (несколько секунд держится — слетает). Теперь решение
+// принимает только api.ts:
+//  - onLockLost(инфо) -> чужой активный замок подтверждён: включаем read-only;
+//  - onLockAcquired() -> замок наш (свободен был или протух и мы заняли): снимаем read-only.
+
+let lockLostCallback: ((lockInfo: any) => void) | null = null;
+let lockAcquiredCallback: (() => void) | null = null;
+
+export function setLockLostCallback(cb: (lockInfo: any) => void) {
+  lockLostCallback = cb;
+}
+
+export function setLockAcquiredCallback(cb: () => void) {
+  lockAcquiredCallback = cb;
 }
 
 // ==================== Освобождение блокировки при выходе ====================
@@ -420,43 +497,82 @@ export async function initSessionAfterLogin(): Promise<boolean> {
 
   const acquired = await acquireLockOnStart();
   if (acquired) {
-    // перезапускаем таймер неактивности для новой сессии
+    // перезапускаем таймеры для новой сессии
     updateActivity();
+    startHeartbeatInterval();
   }
   return acquired;
 }
 
-// Страховой watchdog: если во время работы приложения сервер недоступен
-// (например, его перезапускают), heartbeat-продления падают и сервер, очнувшись,
-// очистит наш замок как протухший. Как только сервер снова начнёт отвечать,
-// мы автоматически заново занимаем блокировку (сервер к тому моменту сам
-// очистит протухший файл — просить его об этом отдельно не нужно).
-let serverWasDown = false;
+// Страховой watchdog (фоновая самозащита блокировки).
+// Периодически спрашивает сервер о состоянии замка и действует по результату:
+//  - замок свободен или протух (сервер сам очистил файл) -> просим сервер занять
+//    его заново (это и есть «попросить сервер очистить/переписать файл»);
+//  - замок наш -> ничего не делаем (его продлевает heartbeat);
+//  - замок чужой и держится ПОДРЯД несколько проверок -> переходим в read-only.
+// ВАЖНО: разовые сбои сети/сервера НЕ считаются потерей блокировки — иначе
+// блокировка «мигает». Статус «чужой» должен подтвердиться CHECK_STRIKES
+// проверками подряд, прежде чем приложение отпустит режим записи.
+const LOCK_CHECK_INTERVAL_MS = 5 * 1000;   // проверка статуса каждые 5 секунд
+const CHECK_STRIKES = 3;                    // чужой замок должен продержаться ~15 сек подряд
+
 let watchdogInstalled = false;
+let foreignStrikes = 0;
 
 function installServerDownWatchdog() {
   if (watchdogInstalled) return;
   watchdogInstalled = true;
 
   setInterval(async () => {
+    const currentUser = getCurrentUser();
+    if (!currentUser) return;
+
+    let status: { locked: boolean; lockInfo: any };
     try {
       const response = await fetch(`${API_BASE}/lock`);
-      if (!response.ok) return;
-
-      if (serverWasDown) {
-        serverWasDown = false;
-        const currentUser = getCurrentUser();
-        if (currentUser) {
-          const status = await checkLockStatus();
-          const ours = status.locked && status.lockInfo?.userId === currentUser.id;
-          if (!ours) {
-            lastHeartbeatSentAt = Date.now();
-            await sendHeartbeat();
-          }
-        }
-      }
+      if (!response.ok) return; // временная проблема сервера — блокировку НЕ рвём
+      status = await response.json();
     } catch {
-      serverWasDown = true;
+      return; // сеть недоступна — ждём восстановления, статус не меняем
     }
-  }, 10 * 1000);
+
+    const ours = status.locked && status.lockInfo?.userId === currentUser.id;
+
+    if (ours) {
+      if (!isHoldingLock) {
+        isHoldingLock = true;
+        if (lockAcquiredCallback) lockAcquiredCallback();
+      }
+      foreignStrikes = 0;
+      return;
+    }
+
+    if (!status.locked) {
+      // Замок свободен (сервер снял наш протухший файл или держатель вышел).
+      // Занимаем его заново, ТОЛЬКО если пользователь сейчас активен:
+      // иначе мы бы бесконечно перезахватывали замок у спящего клиента,
+      // который сам его отпустил по неактивности.
+      foreignStrikes = 0;
+      const recentlyActive = Date.now() - lastActivitySeenAt < INACTIVITY_RELEASE_TIME;
+      if (recentlyActive && !isHoldingLock) {
+        lastHeartbeatSentAt = Date.now();
+        await sendHeartbeat();
+        if (isHoldingLock && lockAcquiredCallback) lockAcquiredCallback();
+      } else if (isHoldingLock) {
+        // Файла нет, хотя мы думаем, что держим — сервер его снял; отпускаем режим записи
+        isHoldingLock = false;
+        if (lockLostCallback) lockLostCallback(null);
+        if (onReleaseCallback) onReleaseCallback();
+      }
+      return;
+    }
+
+    // Чужой активный замок: считаем страйки, read-only только после подтверждения
+    foreignStrikes++;
+    if (foreignStrikes >= CHECK_STRIKES && isHoldingLock) {
+      isHoldingLock = false;
+      if (lockLostCallback) lockLostCallback(status.lockInfo);
+      if (onReleaseCallback) onReleaseCallback();
+    }
+  }, LOCK_CHECK_INTERVAL_MS);
 }

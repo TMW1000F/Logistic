@@ -58,7 +58,6 @@ interface StoreContextType {
   state: AppState;
   dispatch: React.Dispatch<Action>;
   syncToServer: () => Promise<boolean>;
-  isLocked: boolean;
   lockInfo: { userId: string; computerName: string } | null;
   isLoading: boolean;
   error: string | null;
@@ -68,7 +67,6 @@ const StoreContext = createContext<StoreContextType | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
-  const [isLocked, setIsLocked] = useState(false);
   const [lockInfo, setLockInfo] = useState<{ userId: string; computerName: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -105,38 +103,37 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     loadFromServer();
   }, []);
 
-  // Периодическая проверка статуса блокировки.
-  // Если блокировка принадлежит НАМ — сервер обновляет таймер (продление блокировки
-  // привязана к активности клиента). Если держит ДРУГОЙ пользователь — isLocked=true,
-  // приложение перейдёт в режим только чтение.
+  // Периодическая проверка статуса блокировки — только для ОТОБРАЖЕНИЯ
+  // (плашка «кто держит данные»). Решение о read-only принимает api.ts через
+  // свои callbacks; здесь больше нет второго контура, который раньше конфликтовал
+  // с ним и заставлял блокировку «мигать».
   useEffect(() => {
+    let active = true;
+
     async function checkLockStatus() {
       try {
         const lockStatus = await getLockInfo();
-        const currentUser = getCurrentUser();
+        if (!active) return;
         if (lockStatus.locked && lockStatus.lockInfo) {
-          const ours = currentUser && lockStatus.lockInfo.userId === currentUser.id;
-          setIsLocked(!ours); // наша блокировка не считается «закрытой» для этого клиента
           setLockInfo({
             userId: lockStatus.lockInfo.userId,
             computerName: lockStatus.lockInfo.computerName
           });
         } else {
-          setIsLocked(false);
           setLockInfo(null);
         }
       } catch (err) {
-        console.error('Ошибка проверки статуса блокировки:', err);
+        // Временный сбой сети/сервера — статус не меняем, чтобы UI не мигал
       }
     }
 
-    // Проверяем сразу при загрузке
     checkLockStatus();
+    const interval = setInterval(checkLockStatus, 10000);
 
-    // Затем проверяем каждые 5 секунд
-    const interval = setInterval(checkLockStatus, 5000);
-
-    return () => clearInterval(interval);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
   }, []);
 
   // Автосохранение на сервер при изменении состояния (с debounce)
@@ -173,18 +170,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const authUserId = currentUser.id;
         const result = await updateData(state, authUserId, displayName);
         if (result.success) {
-          setIsLocked(false);
-          setLockInfo(null);
           setError(null);
           // Также сохраняем в localStorage как backup
           localStorage.setItem('car_accounting_data', JSON.stringify(state));
         } else {
-          // Данные заблокированы
-          setIsLocked(true);
-          setLockInfo(result.lockInfo ? { 
-            userId: result.lockInfo.userId, 
-            computerName: result.lockInfo.computerName 
-          } : null);
+          // Сервер отклонил запись (чужой замок). Плашку держателя обновит опрос выше;
+          // перевод в read-only выполнит api.ts (единый контур блокировки).
           setError(`Данные заблокированы пользователем: ${result.lockInfo?.computerName || 'неизвестно'}`);
         }
       } catch (err) {
@@ -205,20 +196,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Функция для принудительной синхронизации
   const syncToServer = async (): Promise<boolean> => {
     try {
-      const result = await updateData(state);
+      const currentUserForSync = getCurrentUser();
+      const result = await updateData(state, currentUserForSync?.id, currentUserForSync?.displayName);
       if (result.success) {
-        setIsLocked(false);
-        setLockInfo(null);
         setError(null);
         return true;
-      } else {
-        setIsLocked(true);
-        setLockInfo(result.lockInfo ? { 
-          userId: result.lockInfo.userId, 
-          computerName: result.lockInfo.computerName 
-        } : null);
-        return false;
       }
+      return false;
     } catch (err) {
       console.error('Ошибка синхронизации:', err);
       return false;
@@ -230,7 +214,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       state, 
       dispatch, 
       syncToServer,
-      isLocked,
       lockInfo,
       isLoading,
       error

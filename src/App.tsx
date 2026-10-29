@@ -18,10 +18,10 @@ import {
   verifyToken,
   startActivityTracking,
   stopActivityTracking,
-  setReleaseCallback,
-  acquireLockOnStart,
   initSessionAfterLogin,
   releaseLockOnLogout,
+  setLockLostCallback,
+  setLockAcquiredCallback,
 } from './api';
 
 const APP_NAME = 'Учёт автомобилей';
@@ -29,7 +29,7 @@ const VERSION = '2.0';
 const COMPANY_NAME = "АО «Логистик-Центр»";
 
 function AppContent() {
-  const { state, dispatch, isLocked, lockInfo, isLoading, error } = useStore();
+  const { state, dispatch, lockInfo, isLoading, error } = useStore();
   const toast = useToast();
   const [activeTab, setActiveTab] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -71,39 +71,37 @@ function AppContent() {
     checkAuth();
   }, []);
 
-  // Если во время работы другой пользователь занял блокировку — переходим в режим
-  // только чтение. Если блокировка свободна, а мы авторизованы и в read-only —
-  // просим сервер очистить файл блокировки и занимаем её сами.
+  // Единый контур управления режимом «только чтение».
+  // Решение принимает api.ts (heartbeat + watchdog с подтверждением чужого замка):
+  //  - замок потерян (чужой подтверждённый или снят нами по неактивности) -> read-only;
+  //  - замок наш (занят при старте, либо сервер очистил протухший файл и мы заняли снова) -> запись.
+  // Раньше здесь был второй, независимый контур на 5-секундных опросах store —
+  // из-за конфликта двух источников блокировка «мигала» (держалась секунды и слетала).
   useEffect(() => {
     if (!isAuthenticatedUser) return;
 
-    if (isLocked && lockInfo) {
-      const currentUser = getCurrentUser();
-      if (currentUser && lockInfo.userId !== currentUser.id && !readOnly) {
-        setReadOnly(true);
-        toast.error(`🔒 Файл заблокирован пользователем: ${lockInfo.computerName}. Режим только для чтения.`);
+    setLockLostCallback((lockInfo) => {
+      setReadOnly(true);
+      if (lockInfo?.computerName || lockInfo?.userId) {
+        toast.error(`🔒 Файл заблокирован пользователем: ${lockInfo.computerName || lockInfo.userId}. Режим только для чтения.`);
+      } else {
+        toast.info('🔓 Блокировка снята из-за неактивности. Режим только для чтения.');
       }
-    } else if (!isLocked && readOnly) {
-      // Сервер не очистил файл блокировки (или замок протух) — пробуем занять снова
-      acquireLockOnStart().then((acquired) => {
-        if (acquired) {
-          setReadOnly(false);
-          toast.success('✅ Блокировка получена, можно редактировать');
-        }
+    });
+
+    setLockAcquiredCallback(() => {
+      setReadOnly((prev) => {
+        if (prev) toast.success('✅ Блокировка получена, можно редактировать');
+        return false;
       });
-    }
-  }, [isLocked, lockInfo, isAuthenticatedUser, readOnly]);
+    });
+  }, [isAuthenticatedUser]);
 
   // Мониторинг действий пользователя:
   //  - активность (клики/клавиши/скролл, БЕЗ движений мыши) продлевает блокировку;
   //  - если 5 минут ничего не нажимали — снимаем блокировку и уходим в только чтение.
   useEffect(() => {
     if (!isAuthenticatedUser || readOnly) return;
-
-    setReleaseCallback(() => {
-      setReadOnly(true);
-      toast.info('🔓 Блокировка снята из-за неактивности. Режим только для чтения.');
-    });
 
     startActivityTracking();
 
@@ -508,7 +506,7 @@ function AppContent() {
               {isLoading && (
                 <div className="text-yellow-300">⏳ Загрузка...</div>
               )}
-              {isLocked && lockInfo && currentUser && (
+              {lockInfo && currentUser && (
                 <div className={`flex items-center gap-1 justify-end ${lockInfo.userId === currentUser.id ? 'text-green-300' : 'text-red-300'}`}>
                   <Lock size={12} />
                   <span>
