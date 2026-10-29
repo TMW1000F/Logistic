@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode, useState } from 'react';
 import { AppState, CarRecord, ServiceRecord, Tariff } from './types';
-import { fetchData, updateData, startLockExtension, stopLockExtension, setupLockRelease, userId, computerName } from './api';
+import { fetchData, updateData, startLockExtension, stopLockExtension, setupLockRelease, userId, getComputerName } from './api';
 
 // ==================== Начальное состояние ====================
 const initialState: AppState = {
@@ -116,7 +116,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // Устанавливаем новый таймер (задержка 2 секунды)
     const timeout = setTimeout(async () => {
       try {
-        const result = await updateData(state);
+        const result = await updateData(state, userId, getComputerName());
         if (result.success) {
           startLockExtension();
           setIsLocked(false);

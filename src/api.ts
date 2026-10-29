@@ -20,17 +20,32 @@ function generateUserId(): string {
   return id;
 }
 
-// Получение имени компьютера (из User Agent)
-function getComputerName(): string {
+// Получение имени компьютера
+export function getComputerName(): string {
+  // Сначала проверяем, ввёл ли пользователь своё имя
+  const stored = localStorage.getItem('computerName');
+  if (stored) return stored;
+  
+  // Если нет — определяем по ОС (fallback)
   const ua = navigator.userAgent;
   if (ua.includes('Windows')) return 'Windows PC';
   if (ua.includes('Mac')) return 'Mac';
   if (ua.includes('Linux')) return 'Linux';
-  return 'Unknown';
+  return 'Неизвестный';
+}
+
+// Установка имени компьютера (вызывается из диалога)
+export function setComputerName(name: string): void {
+  localStorage.setItem('computerName', name);
+}
+
+// Проверка, задано ли имя компьютера
+export function hasComputerName(): boolean {
+  return !!localStorage.getItem('computerName');
 }
 
 export const userId = generateUserId();
-export const computerName = getComputerName();
+export let computerName = getComputerName();
 
 // ==================== API функции ====================
 
@@ -56,12 +71,16 @@ export async function fetchData(): Promise<AppState> {
 }
 
 // Обновить все данные
-export async function updateData(data: AppState): Promise<{ success: boolean; lockInfo?: LockInfo }> {
+export async function updateData(data: AppState, userIdParam?: string, computerNameParam?: string): Promise<{ success: boolean; lockInfo?: LockInfo }> {
   try {
     const response = await fetch(`${API_BASE}/data`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, computerName, data })
+      body: JSON.stringify({ 
+        userId: userIdParam || userId, 
+        computerName: computerNameParam || getComputerName(), 
+        data 
+      })
     });
     
     const result = await response.json();
