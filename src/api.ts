@@ -7,7 +7,11 @@ interface LockInfo {
   userId: string;
   computerName: string;
   lockedAt: string;
-  expiresAt: string;
+  // Новое время последней активности держателя (живой таймер, автосброс через 5 минут)
+  lastActivity?: string;
+  // Легаси-поле старых записей lock.json (срок = lockedAt + 30 минут).
+  // Новый сервер его не пишет, но может встретить в файле и уважать до истечения.
+  expiresAt?: string;
 }
 
 interface UserInfo {

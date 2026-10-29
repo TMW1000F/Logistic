@@ -139,10 +139,25 @@ async function checkLock() {
     const lockData = await fs.readFile(LOCK_FILE, 'utf-8');
     const lock = JSON.parse(lockData);
 
-    const lastTouch = new Date(lock.lastActivity || lock.lockedAt).getTime();
-    // Небольшой grace (1 сек), чтобы не рвать блокировку из-за дребезга часов
-    if (Date.now() - lastTouch > LOCK_TIMEOUT_MS + 1000) {
-      console.log('⏰ Блокировка протухла (нет активности > 5 минут), сервер очищает файл...');
+    // Приоритет у «живого» таймера lastActivity. Но если в файле осталась
+    // легаси-запись от СТАРОЙ версии сервера (без lastActivity, зато с
+    // expiresAt = lockedAt + 30 минут), уважаем её срок — иначе новый код
+    // тут же удалил бы чужой активный замок и блокировка «мигала».
+    let expired;
+    if (lock.lastActivity) {
+      const lastTouch = new Date(lock.lastActivity).getTime();
+      // Небольшой grace (1 сек), чтобы не рвать блокировку из-за дребезга часов
+      expired = Date.now() - lastTouch > LOCK_TIMEOUT_MS + 1000;
+    } else if (lock.expiresAt) {
+      expired = new Date(lock.expiresAt).getTime() < Date.now();
+    } else {
+      // Запись без обоих полей — считаем возраст от lockedAt с тем же таймаутом
+      const lockedAt = new Date(lock.lockedAt || 0).getTime();
+      expired = Date.now() - lockedAt > LOCK_TIMEOUT_MS + 1000;
+    }
+
+    if (expired) {
+      console.log('⏰ Блокировка протухла (нет активности / истёк срок), сервер очищает файл...');
       await fs.unlink(LOCK_FILE).catch(() => {});
       return null;
     }
