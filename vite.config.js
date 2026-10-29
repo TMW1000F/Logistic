@@ -4,7 +4,6 @@ import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  base: '/car-accounting/', // Замените 'car-accounting' на имя вашего репозитория!
   server: {
     host: "0.0.0.0",
     port: 3000,
