@@ -147,7 +147,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       try {
         const currentUser = getCurrentUser();
         const displayName = currentUser?.displayName || getComputerName();
-        const result = await updateData(state, userId, displayName);
+        // Используем ID авторизованного пользователя, а не старый userId из localStorage
+        const authUserId = currentUser?.id || userId;
+        const result = await updateData(state, authUserId, displayName);
         if (result.success) {
           startLockExtension();
           setIsLocked(false);

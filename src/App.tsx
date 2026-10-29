@@ -63,6 +63,18 @@ function AppContent() {
     checkAuth();
   }, []);
 
+  // Проверка блокировки файла другим пользователем
+  useEffect(() => {
+    if (isLocked && lockInfo && isAuthenticatedUser && !readOnly) {
+      const currentUser = getCurrentUser();
+      // Если файл заблокирован ДРУГИМ пользователем
+      if (currentUser && lockInfo.userId !== currentUser.id) {
+        setReadOnly(true);
+        toast.error(`🔒 Файл заблокирован пользователем: ${lockInfo.computerName}. Режим только для чтения.`);
+      }
+    }
+  }, [isLocked, lockInfo, isAuthenticatedUser, readOnly]);
+
   // Отслеживание активности пользователя
   useEffect(() => {
     if (!isAuthenticatedUser || readOnly) return;
