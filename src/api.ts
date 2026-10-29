@@ -1,6 +1,7 @@
 import { AppState } from './types';
 
-const API_BASE = 'http://localhost:3001/api';
+// Используем относительный URL — работает на любом хосте
+const API_BASE = '/api';
 
 interface LockInfo {
   userId: string;
@@ -36,11 +37,20 @@ export const computerName = getComputerName();
 // Получить все данные
 export async function fetchData(): Promise<AppState> {
   try {
-    const response = await fetch(`${API_BASE}/data`);
-    if (!response.ok) throw new Error('Ошибка загрузки данных');
+    const url = `${API_BASE}/data`;
+    console.log('Запрос к серверу:', url);
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      throw new Error(`Сервер вернул статус ${response.status}: ${response.statusText}`);
+    }
+    
     return await response.json();
   } catch (error) {
     console.error('Ошибка fetchData:', error);
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Сервер недоступен. Убедитесь, что запущен `npm run server`');
+    }
     throw error;
   }
 }
