@@ -389,50 +389,74 @@ export async function checkLockStatus(): Promise<{ locked: boolean; lockInfo: an
   }
 }
 
-// Освобождение блокировки при закрытии страницы
-export function setupLockRelease() {
-  let released = false;
-  
-  // Используем sendBeacon для надёжной отправки при закрытии страницы
-  const sendReleaseBeacon = () => {
-    if (released) return;
-    released = true;
-    
-    const currentUser = getCurrentUser();
-    const authUserId = currentUser?.id || userId;
-    
-    // Используем абсолютный URL — sendBeacon не работает с относительными путями
-    const url = `${window.location.origin}${API_BASE}/lock/release`;
-    
-    try {
-      // sendBeacon гарантирует доставку даже при закрытии страницы
-      const blob = new Blob([JSON.stringify({ userId: authUserId })], { type: 'application/json' });
-      navigator.sendBeacon(url, blob);
-    } catch (e) {
-      // Fallback: fetch с keepalive
-      try {
-        fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: authUserId }),
-          keepalive: true
-        });
-      } catch (e2) {
-        console.error('Не удалось освободить блокировку:', e2);
-      }
-    }
-  };
+// ==================== Освобождение блокировки при выходе ====================
+//
+// ВАЖНО: блокировка снимается ТОЛЬКО при осознанном «Выходе» из приложения
+// (кнопка «Выход»). Никаких release по beforeunload/pagehide/visibilitychange:
+// раньше именно из-за таких обработчиков файл блокировки очищался при каждом
+// перерисовывании/размонтировании экрана авторизации, хотя пользователь ничего
+// не завершал. Если приложение закрылось или упало без выхода — замок просто
+// протухнет на сервере через 5 минут без активности (см. server.js).
 
-  // Событие перед закрытием вкладки
-  window.addEventListener('beforeunload', sendReleaseBeacon);
-  
-  // Событие при скрытии страницы (более надёжное)
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') {
-      sendReleaseBeacon();
+// Явно освободить блокировку (только по кнопке «Выход») и остановить трекинг.
+// Флаг: держим ли мы блокировку прямо сейчас (для store/App)
+export function isHoldingLockFlag(): boolean {
+  return isHoldingLock;
+}
+
+export async function releaseLockOnLogout(): Promise<void> {
+  stopActivityTracking();
+  await releaseLock();
+}
+
+// Инициализация сессии после успешного входа (вызывается из AppContent,
+// когда StoreProvider уже смонтирован). Занимает блокировку по схеме:
+//  - нет записи в lock.json -> сразу БЛОКИРУЕМ (создаём запись), режим записи;
+//  - запись есть и наша    -> обновляем таймер блокировки, режим записи;
+//  - запись чужая          -> НЕ ТРОГАЕМ файл блокировки, режим только чтение.
+// Возвращает true, если блокировка наша.
+export async function initSessionAfterLogin(): Promise<boolean> {
+  installServerDownWatchdog();
+
+  const acquired = await acquireLockOnStart();
+  if (acquired) {
+    // перезапускаем таймер неактивности для новой сессии
+    updateActivity();
+  }
+  return acquired;
+}
+
+// Страховой watchdog: если во время работы приложения сервер недоступен
+// (например, его перезапускают), heartbeat-продления падают и сервер, очнувшись,
+// очистит наш замок как протухший. Как только сервер снова начнёт отвечать,
+// мы автоматически заново занимаем блокировку (сервер к тому моменту сам
+// очистит протухший файл — просить его об этом отдельно не нужно).
+let serverWasDown = false;
+let watchdogInstalled = false;
+
+function installServerDownWatchdog() {
+  if (watchdogInstalled) return;
+  watchdogInstalled = true;
+
+  setInterval(async () => {
+    try {
+      const response = await fetch(`${API_BASE}/lock`);
+      if (!response.ok) return;
+
+      if (serverWasDown) {
+        serverWasDown = false;
+        const currentUser = getCurrentUser();
+        if (currentUser) {
+          const status = await checkLockStatus();
+          const ours = status.locked && status.lockInfo?.userId === currentUser.id;
+          if (!ours) {
+            lastHeartbeatSentAt = Date.now();
+            await sendHeartbeat();
+          }
+        }
+      }
+    } catch {
+      serverWasDown = true;
     }
-  });
-  
-  // Событие при выгрузке страницы
-  window.addEventListener('pagehide', sendReleaseBeacon);
+  }, 10 * 1000);
 }

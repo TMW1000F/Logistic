@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode, useState } from 'react';
 import { AppState, CarRecord, ServiceRecord, Tariff } from './types';
-import { fetchData, updateData, setupLockRelease, getLockInfo, getCurrentUser } from './api';
+import { fetchData, updateData, getLockInfo, getCurrentUser, isHoldingLockFlag } from './api';
 
 // ==================== Начальное состояние ====================
 const initialState: AppState = {
@@ -103,7 +103,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
     
     loadFromServer();
-    setupLockRelease();
   }, []);
 
   // Периодическая проверка статуса блокировки.
@@ -162,6 +161,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           return;
         }
         
+        // Не отправляем данные на сервер, если мы НЕ держим блокировку
+        // (режим «только чтение»): иначе POST /api/data попытался бы занять
+        // чужой замок и вернул 403 на каждое изменение.
+        if (!isHoldingLockFlag()) {
+          localStorage.setItem('car_accounting_data', JSON.stringify(state));
+          return;
+        }
+
         const displayName = currentUser.displayName;
         const authUserId = currentUser.id;
         const result = await updateData(state, authUserId, displayName);

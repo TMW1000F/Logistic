@@ -20,6 +20,8 @@ import {
   stopActivityTracking,
   setReleaseCallback,
   acquireLockOnStart,
+  initSessionAfterLogin,
+  releaseLockOnLogout,
 } from './api';
 
 const APP_NAME = 'Учёт автомобилей';
@@ -53,7 +55,7 @@ function AppContent() {
       const user = await verifyToken();
       if (user) {
         setIsAuthenticatedUser(true);
-        const acquired = await acquireLockOnStart();
+        const acquired = await initSessionAfterLogin();
         if (acquired) {
           setReadOnly(false);
         } else {
@@ -165,6 +167,8 @@ function AppContent() {
   // Выход из системы
   const handleLogout = async () => {
     if (!confirm('Выйти из системы?')) return;
+    // Блокировка снимается ТОЛЬКО при осознанном выходе из приложения
+    await releaseLockOnLogout();
     await logout();
     setIsAuthenticatedUser(false);
     setReadOnly(false);
