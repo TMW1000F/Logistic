@@ -26,7 +26,7 @@ export interface CarRecord {
 // Русские буквы, допустимые в госномерах
 const PLATE_LETTERS = 'АВЕКМНОРСТУХ';
 // Латинские буквы, визуально совпадающие с буквами госномера: B→В, E→Е, K→К, M→М, H→Н, C→С, T→Т, Y→У, X→Х
-const LATIN_TO_CYR: Record<string, string> = { 'B': 'В', 'E': 'Е', 'K': 'К', 'M': 'М', 'H': 'Н', 'C': 'С', 'T': 'Т', 'Y': 'У', 'X': 'Х' };
+const LATIN_TO_CYR: Record<string, string> = { 'A': 'А', 'B': 'В', 'E': 'Е', 'K': 'К', 'M': 'М', 'H': 'Н', 'C': 'С', 'T': 'Т', 'Y': 'У', 'X': 'Х' };
 
 // Нормализация: убираем пробелы/дефисы, латиницу → кириллица, верхний регистр
 export function normalizePlate(input: string): string {

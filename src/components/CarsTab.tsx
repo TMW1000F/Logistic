@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useStore } from '../store';
 import { useToast } from './Toast';
 import { CarInBase, normalizePlate, formatPlateDisplay, isValidPlateFormat, plateFormatHint, generateId } from '../types';
@@ -19,7 +19,6 @@ export default function CarsTab({ onStatus, darkMode = false, readOnly = false }
   const [plateInput, setPlateInput] = useState('');
   const [carType, setCarType] = useState('');
   const [carrier, setCarrier] = useState('');
-  const [showForm, setShowForm] = useState(false);
 
   // Поиск по базе
   const [searchQuery, setSearchQuery] = useState('');
@@ -50,20 +49,13 @@ export default function CarsTab({ onStatus, darkMode = false, readOnly = false }
   // Подсказка формата в реальном времени
   const plateValid = plateInput.trim() === '' || isValidPlateFormat(plateInput);
 
+  const formRef = useRef<HTMLFormElement>(null);
+
   const resetForm = () => {
     setEditingId(null);
     setPlateInput('');
     setCarType('');
     setCarrier('');
-    setShowForm(false);
-  };
-
-  const openAddForm = () => {
-    setEditingId(null);
-    setPlateInput('');
-    setCarType('');
-    setCarrier('');
-    setShowForm(true);
   };
 
   const openEditForm = (car: CarInBase) => {
@@ -71,7 +63,9 @@ export default function CarsTab({ onStatus, darkMode = false, readOnly = false }
     setPlateInput(car.display);
     setCarType(car.car_type);
     setCarrier(car.carrier);
-    setShowForm(true);
+    // Прокручиваем к форме и выделяем поле номера
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    setTimeout(() => formRef.current?.querySelector<HTMLInputElement>('input[type=text]')?.focus(), 100);
   };
 
   const handleSave = () => {
@@ -128,82 +122,72 @@ export default function CarsTab({ onStatus, darkMode = false, readOnly = false }
     }
   };
 
-  const inputCls = `w-full border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`;
-  const labelCls = `text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`;
+  const inputCls = `border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`;
 
   return (
     <div className="flex flex-col h-full">
-      {/* Форма добавления/редактирования */}
+      {/* Форма добавления/редактирования — всегда видна, всё в одну строку */}
       {!readOnly && (
         <div className={`flex-shrink-0 rounded-lg p-3 mb-2 ${darkMode ? 'bg-gray-800' : 'bg-white border border-gray-200'}`}>
-          {!showForm ? (
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                📋 База автомобилей: {state.cars.length} шт. {plateFormatHint()}
-              </span>
+          <form
+            ref={formRef}
+            onSubmit={e => { e.preventDefault(); handleSave(); }}
+            className="flex flex-wrap items-center gap-2"
+          >
+            <span className={`text-sm font-semibold whitespace-nowrap ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+              {editingId ? '✏️ Редактирование' : '🚗 Новый автомобиль'}
+            </span>
+            <input
+              type="text"
+              value={plateInput}
+              onChange={e => setPlateInput(e.target.value)}
+              placeholder="Госномер *"
+              title={`Госномер. ${plateFormatHint()}`}
+              className={`${inputCls} font-mono w-44`}
+            />
+            <select
+              value={carType}
+              onChange={e => setCarType(e.target.value)}
+              title="Тип ТС (из тарифов)"
+              className={`${inputCls} min-w-[140px]`}
+            >
+              <option value="">Тип ТС *</option>
+              {autoCategories.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <select
+              value={carrier}
+              onChange={e => setCarrier(e.target.value)}
+              title="Перевозчик (из тарифов)"
+              className={`${inputCls} min-w-[140px]`}
+            >
+              <option value="">Перевозчик *</option>
+              {autoCarriers.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <button
+              type="submit"
+              className="flex items-center gap-1 bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 whitespace-nowrap"
+            >
+              <Plus size={14} /> {editingId ? 'Сохранить' : 'Добавить'}
+            </button>
+            {editingId && (
               <button
-                onClick={openAddForm}
-                className="flex items-center gap-1 bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700"
+                type="button"
+                onClick={resetForm}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded text-sm ${darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
               >
-                <Plus size={14} /> Добавить автомобиль
+                <X size={14} /> Отмена
               </button>
-            </div>
-          ) : (
-            <>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
-                <div>
-                  <label className={labelCls}>Госномер *:</label>
-                  <input
-                    type="text"
-                    value={plateInput}
-                    onChange={e => setPlateInput(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') handleSave(); }}
-                    autoFocus
-                    placeholder="А 123 АА 123 или 1234 АА 123"
-                    className={`${inputCls} ${!plateValid ? (darkMode ? 'border-red-500' : 'border-red-500 ring-1 ring-red-300') : ''}`}
-                  />
-                  <p className={`text-xs mt-1 ${plateValid ? (darkMode ? 'text-gray-500' : 'text-gray-400') : 'text-red-500'}`}>
-                    {plateValid
-                      ? (plateInput.trim() ? `Будет сохранён как: ${formatPlateDisplay(normalizePlate(plateInput))}` : plateFormatHint())
-                      : `⚠️ ${plateFormatHint()}`}
-                  </p>
-                </div>
-                <div>
-                  <label className={labelCls}>Тип ТС (из тарифов) *:</label>
-                  <select value={carType} onChange={e => setCarType(e.target.value)} className={inputCls}>
-                    <option value="">-- Выберите --</option>
-                    {autoCategories.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className={labelCls}>Перевозчик (из тарифов) *:</label>
-                  <select value={carrier} onChange={e => setCarrier(e.target.value)} className={inputCls}>
-                    <option value="">-- Выберите --</option>
-                    {autoCarriers.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-              </div>
-              {autoCategories.length === 0 && (
-                <p className="text-xs text-amber-600 mb-2">⚠️ В тарифах нет автомобильных категорий/перевозчиков — сначала добавьте тарифы во вкладке «Тарифы».</p>
-              )}
-              <div className="flex items-center gap-2">
-                <span className={`text-sm font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
-                  {editingId ? '✏️ Редактирование автомобиля' : '🚗 Новый автомобиль'}
-                </span>
-                <button
-                  onClick={handleSave}
-                  className="flex items-center gap-1 bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 ml-auto"
-                >
-                  <Plus size={14} /> {editingId ? 'Сохранить изменения' : 'Добавить в базу'}
-                </button>
-                <button
-                  onClick={resetForm}
-                  className={`flex items-center gap-1 px-3 py-1.5 rounded text-sm ${darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
-                >
-                  <X size={14} /> Отмена
-                </button>
-              </div>
-            </>
+            )}
+            <span className={`text-xs ${plateValid ? (darkMode ? 'text-gray-500' : 'text-gray-400') : 'text-red-500'}`}>
+              {!plateValid
+                ? `⚠️ ${plateFormatHint()}`
+                : plateInput.trim() && isValidPlateFormat(plateInput)
+                  ? `→ ${formatPlateDisplay(normalizePlate(plateInput))}`
+                  : `Формат: А 123 АА 123 или 1234 АА 123 · В базе: ${state.cars.length} шт.`}
+            </span>
+          </form>
+          {autoCategories.length === 0 && (
+            <p className="text-xs text-amber-600 mt-1">⚠️ В тарифах нет автомобильных категорий/перевозчиков — сначала добавьте тарифы во вкладке «Тарифы».</p>
           )}
         </div>
       )}

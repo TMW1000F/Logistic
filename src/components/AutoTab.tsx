@@ -43,15 +43,6 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
   // Группировка
   const [groupBy, setGroupBy] = useState<'none' | 'number' | 'type'>('none');
 
-  // Получить уникальные значения из тарифов
-  const autoCategories = useMemo(() => {
-    return [...new Set(state.tariffs.filter(t => t.type === 'auto').map(t => t.category))].sort();
-  }, [state.tariffs]);
-
-  const autoCarriers = useMemo(() => {
-    return [...new Set(state.tariffs.filter(t => t.type === 'auto').map(t => t.carrier))].sort();
-  }, [state.tariffs]);
-
   // База автомобилей: выбранный автомобиль и отфильтрованный список для подсказок
   const selectedCar = useMemo(
     () => state.cars.find(c => c.id === selectedCarId) || null,
@@ -238,8 +229,8 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
       plate = selectedCar.plate;
     } else {
       const q = plateQuery.trim();
-      if (!q || !carType || !carrier) {
-        toast.warning('Выберите автомобиль из базы (начните вводить номер) и укажите тип ТС и перевозчика');
+      if (!q) {
+        toast.warning('Выберите автомобиль из базы — начните вводить номер и выберите из подсказок');
         return;
       }
       if (!isValidPlateFormat(q)) {
@@ -249,6 +240,7 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
       const norm = normalizePlate(q);
       const inBase = state.cars.find(c => c.plate === norm);
       if (inBase) {
+        selectCar(inBase);
         plate = inBase.plate;
       } else {
         toast.warning(`Автомобиль «${formatPlateDisplaySafe(norm)}» не найден в базе. Добавьте его во вкладку «База автомобилей» или выберите из подсказок.`);
@@ -257,7 +249,7 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
       }
     }
     if (!carType || !carrier) {
-      toast.warning('Заполните обязательные поля: номер ТС, тип ТС, перевозчик');
+      toast.warning('Для выбранного автомобиля не заданы тип ТС и перевозчик. Проверьте запись в базе «База автомобилей».');
       return;
     }
 
@@ -380,9 +372,9 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
       {/* Sticky форма ввода */}
       {!readOnly && (
       <div className={`flex-shrink-0 rounded-lg p-3 mb-2 ${darkMode ? 'bg-gray-800' : 'bg-white border border-gray-200'}`}>
-        {/* Строка 1: Номер ТС, Тип ТС, Перевозчик, Дата */}
-        <div className="grid grid-cols-4 gap-2 mb-2">
-          <div className="relative">
+        {/* Одна строка: все поля и кнопки */}
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="relative min-w-[220px] flex-1 max-w-xs">
             <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Автомобиль (из базы):</label>
             <div className="flex gap-1">
               <input
@@ -445,40 +437,14 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
             )}
           </div>
           <div>
-            <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Тип ТС:</label>
-            <select
-              value={carType}
-              onChange={e => setCarType(e.target.value)}
-              className={`w-full border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
-            >
-              <option value="">-- Выберите --</option>
-              {autoCategories.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Перевозчик:</label>
-            <select
-              value={carrier}
-              onChange={e => setCarrier(e.target.value)}
-              className={`w-full border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
-            >
-              <option value="">-- Выберите --</option>
-              {autoCarriers.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-          <div>
             <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Дата:</label>
             <input
               type="date"
               value={date}
               onChange={e => setDate(e.target.value)}
-              className={`w-full border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+              className={`border rounded px-2 py-1 text-sm w-36 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
             />
           </div>
-        </div>
-
-        {/* Строка 2: Прибытие, Убытие, Коэффициент, Фильтр по интервалу, кнопки */}
-        <div className="flex flex-wrap items-end gap-2">
           <div>
             <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Прибытие:</label>
             <input
