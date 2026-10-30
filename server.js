@@ -318,6 +318,61 @@ function logAdHeaders(req, context) {
   console.log('      (частые варианты: x-remote-user, remote_user, x-forwarded-user, authorization-user)');
 }
 
+// Прокси-заглушка для быстрой проверки входа без корпоративного прокси.
+// Включается переменной MOCK_AD_USER (например: MOCK_AD_USER=shavlakovav@nsk.tlcn.ru node server.js).
+// Работает ТОЛЬКО когда сервер запущен на этой же машине (127.0.0.1 / ::1),
+// поэтому удалённые пользователи его не увидят и обойти фильтрацию не смогут.
+const MOCK_AD_USER = (process.env.MOCK_AD_USER || '').trim();
+function isLocalRequest(req) {
+  const ip = req.socket.remoteAddress || '';
+  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+}
+
+// Диагностика «почему прокси не передал логин»: различаем три случая —
+// 1) запрос пришёл вообще без заголовков → браузер обращается напрямую к Node
+//    (в обход прокси с Windows-аутентификацией);
+// 2) есть x-forwarded-for/x-real-ip → прокси есть, но НЕ добавляет заголовок
+//    с логином (не настроена подстановка REMOTE_USER/LOGON_USER);
+// 3) есть неизвестные заголовки с именем пользователя → просто укажите их
+//    имя в AD_USER_HEADER.
+function diagnoseMissingAdLogin(req) {
+  const forwarded = req.headers['x-forwarded-for'] || req.headers['x-real-ip'];
+  const knownHeaders = new Set([
+    ...HEADER_CANDIDATES_GLOBAL,
+    AD_DISPLAY_NAME_HEADER, AD_GROUPS_HEADER,
+    'host', 'user-agent', 'accept', 'accept-encoding', 'accept-language',
+    'connection', 'referer', 'sec-ch-ua', 'sec-ch-ua-mobile', 'sec-ch-ua-platform',
+    'sec-fetch-dest', 'sec-fetch-mode', 'sec-fetch-site', 'cache-control',
+    'upgrade-insecure-requests', 'dnt', 'pragma', 'content-type', 'content-length',
+    'cookie', 'authorization', 'date', 'origin',
+  ]);
+  const unknownHeaders = Object.keys(req.headers).filter(n => !knownHeaders.has(n));
+  if (!forwarded && unknownHeaders.length === 0) {
+    return {
+      conclusion: 'Похоже, что запрос идёт НАПРЯМУЮ на Node-сервер, в обход прокси с Windows-аутентификацией.',
+      advice: `Открывайте сайт по адресу прокси, а не http://${req.headers.host || 'IP:PORT'} напрямую. Либо временно проверьте вход локально: MOCK_AD_USER=<ваш логин> node server.js и откройте http://localhost:${PORT}.`,
+    };
+  }
+  if (unknownHeaders.length > 0) {
+    return {
+      conclusion: 'Прокси передаёт дополнительные заголовки — возможно, логин AD приходит в одном из них (см. allHeaders).',
+      advice: `Найдите в списке заголовков значение вида NSK\\user или user@domain и запустите сервер с AD_USER_HEADER=<имя этого заголовка>. Если похожего нет — прокси не подставляет логин: настройте RequestHeader/proxy_set_header/правило ARR (REMOTE_USER/LOGON_USER → X-Forwarded-User).`,
+    };
+  }
+  return {
+    conclusion: 'Запрос прошёл через прокси (есть x-forwarded-for/x-real-ip), но прокси НЕ добавил заголовок с именем пользователя.',
+    advice: 'На прокси включите подстановку заголовка: Apache — RequestHeader set X-Forwarded-User "%{REMOTE_USER}s"; Nginx — proxy_set_header X-Forwarded-User $remote_user; IIS/ARR — outbound-правило LOGON_USER → X-Forwarded-User.',
+  };
+}
+
+// Кандидаты заголовков с логином AD (основной + частые варианты разных прокси)
+const HEADER_CANDIDATES_GLOBAL = [
+  AD_USER_HEADER,
+  'x-remote-user', 'remote_user', 'remote-user',
+  'logon_user', 'logon-user', 'authorization-user',
+  'x-authenticated-user', 'x-ms-client-principal-name',
+];
+
 // Для ответов об ошибке: какие заголовки прокси реально передал (без значений секретов)
 function buildAdDebugInfo(req, users) {
   if (!DEBUG_AD) return undefined;
@@ -328,6 +383,12 @@ function buildAdDebugInfo(req, users) {
       /user|auth|remote|login|kerberos|ntlm|forwarded/i.test(n)
     ),
     allHeaderNames: Object.keys(req.headers),
+    // Полные имена всех заголовков запроса — чтобы на прокси можно было
+    // скопировать нужное имя в AD_USER_HEADER без догадок. Значения
+    // чувствительных заголовков (Authorization, Cookie и т.п.) не показываются.
+    allHeaders: Object.fromEntries(
+      Object.entries(req.headers).map(([n, v]) => [n, maskHeaderValue(n, String(v))])
+    ),
     allowedUsernames: Array.isArray(users) ? users.map(u => u.username) : [],
     hint: 'Если headerValue=null — прокси не передаёт заголовок AD. Проверьте настройки Windows-аутентификации на прокси и задайте AD_USER_HEADER именем того заголовка, который он реально шлёт (см. presentAuthHeaders).'
   };
@@ -371,38 +432,36 @@ app.get('/api/auth/whoami', async (req, res) => {
   console.log('🪪 GET /api/auth/whoami');
   logAdHeaders(req, 'whoami: входящие данные от прокси');
 
-  // Кандидаты: основной заголовок + частые варианты, которые шлют разные прокси
-  // (IIS ARR, Apache mod_auth, nginx auth_request и т.п.). Первый непустой — тот и используем.
-  const HEADER_CANDIDATES = [
-    AD_USER_HEADER,
-    'x-remote-user', 'remote_user', 'remote-user',
-    'logon_user', 'logon-user', 'authorization-user',
-    'x-authenticated-user', 'x-ms-client-principal-name',
-  ];
+  // Локальная проверка без корпоративного прокси: MOCK_AD_USER подставляет
+  // логин AD, но только для запросов с этой же машины (127.0.0.1).
   let adLoginRaw = null;
   let matchedHeader = null;
-  for (const h of HEADER_CANDIDATES) {
-    const v = req.headers[h];
-    if (v && String(v).trim()) { adLoginRaw = v; matchedHeader = h; break; }
+  if (MOCK_AD_USER && isLocalRequest(req)) {
+    adLoginRaw = MOCK_AD_USER;
+    matchedHeader = '(MOCK_AD_USER)';
+    console.log(`🧪 whoami: использован MOCK_AD_USER="${MOCK_AD_USER}" (локальный запрос)`);
+  } else {
+    // Кандидаты: основной заголовок + частые варианты, которые шлют разные прокси
+    // (IIS ARR, Apache mod_auth, nginx auth_request и т.п.). Первый непустой — тот и используем.
+    for (const h of HEADER_CANDIDATES_GLOBAL) {
+      const v = req.headers[h];
+      if (v && String(v).trim()) { adLoginRaw = v; matchedHeader = h; break; }
+    }
   }
 
-  if (matchedHeader && matchedHeader !== AD_USER_HEADER) {
+  if (matchedHeader && matchedHeader !== AD_USER_HEADER && matchedHeader !== '(MOCK_AD_USER)') {
     console.log(`ℹ️ whoami: логин взят из заголовка "${matchedHeader}" (основной: "${AD_USER_HEADER}").`);
     console.log(`   Чтобы убрать этот автоподбор явно, запустите сервер с: AD_USER_HEADER=${matchedHeader}`);
   }
 
   if (!adLoginRaw) {
-    console.log('🚫 whoami: ни в одном из заголовков кандидатов нет логина:', HEADER_CANDIDATES.join(', '));
-    console.log('   → Прокси аутентифицировал пользователя (Kerberos/NTLM), но НЕ передал его имя дальше.');
-    console.log('   → На прокси нужно добавить подстановку заголовка, например:');
-    console.log('      IIS/ARR: правило outbound "Server Variable LOGON_USER -> Request Header X-Forwarded-User"');
-    console.log('      Apache : RequestHeader set X-Forwarded-User "%{REMOTE_USER}s" env=REMOTE_USER');
-    console.log('      Nginx  : proxy_set_header X-Forwarded-User $remote_user;  (в блоке location)');
+    const diag = diagnoseMissingAdLogin(req);
+    console.log('🚫 whoami: ни в одном из заголовков кандидатов нет логина:', HEADER_CANDIDATES_GLOBAL.join(', '));
+    console.log(`   → ${diag.conclusion}`);
+    console.log(`   → ${diag.advice}`);
     const debugInfo = buildAdDebugInfo(req, []);
     return res.status(401).json({
-      error: 'Прокси не передал имя пользователя AD: ни один из заголовков (' + HEADER_CANDIDATES.slice(0, 5).join(', ') + ') не пришёл. ' +
-             'Настройте на прокси добавление заголовка с логином (LOGON_USER/REMOTE_USER → X-Forwarded-User) либо укажите правильное имя через переменную AD_USER_HEADER. ' +
-             'Детали: включите DEBUG_AD=1 node server.js и посмотрите presentAuthHeaders.',
+      error: `Прокси не передал имя пользователя AD: ни один из заголовков (${HEADER_CANDIDATES_GLOBAL.slice(0, 5).join(', ')}) не пришёл. ${diag.conclusion} ${diag.advice}`,
       ...(debugInfo ? { debug: debugInfo } : {})
     });
   }
