@@ -6,7 +6,6 @@ import { CarInBase, normalizePlate, formatPlateDisplay, isValidPlateFormat, plat
 import { Plus, Edit, Trash2, X, Car, Search, Download, Upload } from 'lucide-react';
 
 interface Props {
-  onStatus?: (msg: string) => void;
   darkMode?: boolean;
   readOnly?: boolean;
 }
@@ -47,7 +46,7 @@ function extractCarsFromWorkbook(wb: XLSX.WorkBook): { plate: string; carType: s
   return result;
 }
 
-export default function CarsTab({ onStatus, darkMode = false, readOnly = false }: Props) {
+export default function CarsTab({ darkMode = false, readOnly = false }: Props) {
   const { state, dispatch, syncToServer } = useStore();
   const toast = useToast();
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -161,8 +160,7 @@ export default function CarsTab({ onStatus, darkMode = false, readOnly = false }
     };
 
     dispatch({ type: 'SAVE_CAR', payload: car });
-    toast.success(editingId ? `Автомобиль ${display} обновлён` : `Автомобиль ${display} добавлен в базу`);
-    onStatus?.(editingId ? `✏️ Автомобиль ${display} обновлён` : `🚗 Автомобиль ${display} добавлен в базу`);
+    toast.success(editingId ? `✏️ Автомобиль ${display} обновлён` : `🚗 Автомобиль ${display} добавлен в базу`);
     resetForm();
   };
 
@@ -174,7 +172,8 @@ export default function CarsTab({ onStatus, darkMode = false, readOnly = false }
     if (confirm(msg)) {
       dispatch({ type: 'DELETE_CAR', payload: car.id });
       toast.success(`Автомобиль ${car.display} удалён из базы`);
-      onStatus?.(`🗑️ Автомобиль ${car.display} удалён из базы`);
+      toast.error(`🗑️ Автомобиль ${car.display} удалён из базы`);
+
     }
   };
 
@@ -201,7 +200,8 @@ export default function CarsTab({ onStatus, darkMode = false, readOnly = false }
     a.click();
     URL.revokeObjectURL(url);
     toast.success(`Экспортировано автомобилей: ${state.cars.length}`);
-    onStatus?.(`📤 База автомобилей экспортирована (${state.cars.length} шт.)`);
+    toast.info(`📤 База автомобилей экспортирована (${state.cars.length} шт.)`);
+
   };
 
   const handleImportFile = async (file: File) => {
@@ -291,7 +291,8 @@ export default function CarsTab({ onStatus, darkMode = false, readOnly = false }
         ? `база заменена: ${unique.length} авто`
         : `новых: ${carsToAdd.length}, обновлено: ${carsUpdated.length}` + (dupInFileCount ? `, дублей пропущено: ${dupInFileCount}` : '');
       toast.success(`Импорт завершён (${summary})`);
-      onStatus?.(`📥 Импорт базы автомобилей: ${summary}`);
+      toast.success(`📥 Импорт базы автомобилей: ${summary}`);
+
     } catch (e) {
       console.error('Ошибка импорта:', e);
       toast.error('Не удалось прочитать файл. Используйте текстовый файл (.txt/.tsv/.csv) в кодировке UTF-8 или Windows-1251');
@@ -432,7 +433,12 @@ export default function CarsTab({ onStatus, darkMode = false, readOnly = false }
                 <th className={`px-2 py-2 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Тип ТС</th>
                 <th className={`px-2 py-2 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Перевозчик</th>
                 <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Записей рейсов</th>
-                {!readOnly && <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Действия</th>}
+                {/* Колонка действий: в режиме только чтения скрываем кнопки, но саму
+                    колонку оставляем (пустым <th/>), чтобы ячейки tbody не съезжали
+                    относительно заголовков. */}
+                <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} ${readOnly ? 'w-8' : ''}`}>
+                  {!readOnly && 'Действия'}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -472,7 +478,7 @@ export default function CarsTab({ onStatus, darkMode = false, readOnly = false }
               })}
               {filteredCars.length === 0 && (
                 <tr>
-                  <td colSpan={readOnly ? 5 : 6} className={`px-4 py-8 text-center ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                  <td colSpan={6} className={`px-4 py-8 text-center ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                     {state.cars.length === 0 ? 'База автомобилей пуста — добавьте первый автомобиль' : 'Ничего не найдено'}
                   </td>
                 </tr>

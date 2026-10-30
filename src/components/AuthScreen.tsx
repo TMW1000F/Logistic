@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { login, register } from '../api';
 import { useToast } from './Toast';
 
@@ -16,7 +16,7 @@ export default function AuthScreen({ onAuthSuccess, onReadOnlyMode, darkMode }: 
   const [isLoading, setIsLoading] = useState(false);
   const toast = useToast();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     
     if (!username.trim() || !password.trim()) {

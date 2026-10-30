@@ -23,16 +23,6 @@ interface AuthResponse {
   error?: string;
 }
 
-// Генерация уникального ID пользователя (на основе браузера)
-function generateUserId(): string {
-  const stored = localStorage.getItem('userId');
-  if (stored) return stored;
-  
-  const id = 'user_' + Math.random().toString(36).substr(2, 9);
-  localStorage.setItem('userId', id);
-  return id;
-}
-
 // Получение имени компьютера (автоматически, по ОС)
 export function getComputerName(): string {
   // Сначала проверяем, не задано ли имя ранее
@@ -46,9 +36,6 @@ export function getComputerName(): string {
   if (ua.includes('Linux')) return 'Linux';
   return 'Неизвестный';
 }
-
-export const userId = generateUserId();
-export let computerName = getComputerName();
 
 // ==================== Авторизация ====================
 
@@ -214,7 +201,7 @@ export async function updateData(data: AppState, userIdParam?: string, computerN
         ...authHeaders()
       },
       body: JSON.stringify({ 
-        userId: userIdParam || currentUser?.id || userId, 
+        userId: userIdParam || currentUser?.id || '', 
         computerName: computerNameParam || currentUser?.displayName || getComputerName(), 
         data 
       })

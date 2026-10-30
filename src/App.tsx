@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type ChangeEvent } from 'react';
 import { StoreProvider, useStore } from './store';
 import { ToastProvider, useToast } from './components/Toast';
 import AuthScreen from './components/AuthScreen';
@@ -9,14 +9,17 @@ import TariffsTab from './components/TariffsTab';
 import CarsTab from './components/CarsTab';
 import StatsTab from './components/StatsTab';
 import { Car, Wrench, BarChart3, DollarSign, TrendingUp, HelpCircle, Save, FolderOpen, FilePlus, Sun, Moon, LogOut, Eye, Lock, Database } from 'lucide-react';
-import { calcDurationHours, calcAutoCost, calcServiceHours, calcServiceCost, formatDate } from './types';
+import { calcDurationHours, calcAutoCost, calcServiceHours, calcServiceCost, formatDate, generateId } from './types';
 import { 
   getCurrentUser, 
   logout, 
   verifyToken,
   getLockInfo,
+  releaseLock,
   startActivityTracking,
   stopActivityTracking,
+  startLockExtension,
+  stopLockExtension,
   setWarningCallback,
   setReleaseCallback,
   setLockLostCallback,
@@ -28,21 +31,51 @@ const APP_NAME = 'Учёт автомобилей';
 const VERSION = '2.0';
 const COMPANY_NAME = "АО «Логистик-Центр»";
 
+// Единая реакция на блокировку другим пользователем.
+// Раньше одинаковые сообщения «🔒 Файл заблокирован...» дублировались в трёх
+// местах (полинг store, эффект в App, callback потери блокировки) с мелкими
+// расхождениями в формулировках — теперь один источник правды.
+// ВАЖНО: хук реагирует ТОЛЬКО если мы уже внутри приложения (viewMode !== 'none').
+// Иначе сразу после выхода из системы (viewMode='none') залипший lock.json от
+// предыдущего пользователя мгновенно возвращал бы нас в read-only — именно так
+// выглядел баг «нажал Выход → через секунду сам вошёл как гость».
+function useLockState(viewMode: 'none' | 'edit' | 'read', enterReadOnly: () => void) {
+  const { isLocked, lockInfo } = useStore();
+  const toast = useToast();
+  useEffect(() => {
+    if (viewMode !== 'edit') return; // не трогаем состояние на экране логина и в просмотре
+    if (!isLocked || !lockInfo) return;
+    const currentUser = getCurrentUser();
+    if (!currentUser || lockInfo.userId !== currentUser.id) {
+      enterReadOnly();
+      toast.error(`🔒 Файл заблокирован пользователем: ${lockInfo.computerName}. Режим только для чтения.`);
+    }
+  }, [isLocked, lockInfo, viewMode]);
+}
+
 function AppContent() {
   const { state, dispatch, isLocked, lockInfo, isLoading, error } = useStore();
   const toast = useToast();
   const [activeTab, setActiveTab] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showHelp, setShowHelp] = useState(false);
-  const [statusMessage, setStatusMessage] = useState('Готов к работе');
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem('darkMode');
     return saved === 'true';
   });
   const [isAuthChecked, setIsAuthChecked] = useState(false);
-  const [isAuthenticatedUser, setIsAuthenticatedUser] = useState(false);
-  const [readOnly, setReadOnly] = useState(false);
+  // Единый флаг «мы уже смотрим данные»: true, когда пользователь авторизован
+  // ИЛИ включён режим только просмотра. Пока он false — показываем экран
+  // авторизации. Раньше код был разбросан по нескольким useState-сеттерам, и
+  // выход из системы иногда приводил к авто-входу в режим просмотра (см.
+  // handleLogout / handleAuthSuccess).
+  const [viewMode, setViewMode] = useState<'none' | 'edit' | 'read'>('none');
+  const isAuthenticatedUser = viewMode === 'edit';
+  const readOnly = viewMode === 'read';
+  const inApp = viewMode !== 'none';
   const [showInactivityWarning, setShowInactivityWarning] = useState(false);
+
+  useLockState(viewMode, () => setViewMode('read'));
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Проверка авторизации и блокировки при загрузке.
@@ -50,7 +83,22 @@ function AppContent() {
   // другой пользователь — сразу режим только для чтения (без «своего» окна).
   useEffect(() => {
     const checkAuth = async () => {
-      const user = await verifyToken();
+      let user: ReturnType<typeof getCurrentUser> | null = null;
+      try {
+        user = await verifyToken();
+      } catch (e) {
+        console.error('Не удалось проверить токен:', e);
+      }
+
+      if (user) {
+        // Авторизованный вход всегда даёт полноценный доступ. Блокировку
+        // другого пользователя нам покажет store-полинг (useLockState),
+        // а не это одноразовое чтение lock.json, которое может быть
+        // «залипшим» из-за гонки с acquireLock на сервере.
+        setViewMode('edit');
+        setIsAuthChecked(true);
+        return;
+      }
 
       let lockStatus: { locked: boolean; lockInfo: any } = { locked: false, lockInfo: null };
       try {
@@ -60,39 +108,18 @@ function AppContent() {
       }
       const otherLock = lockStatus.locked && lockStatus.lockInfo;
 
-      if (user) {
-        setIsAuthenticatedUser(true);
-        if (otherLock && lockStatus.lockInfo.userId !== user.id) {
-          setReadOnly(true);
-          toast.error(`🔒 Файл заблокирован пользователем: ${lockStatus.lockInfo.computerName}. Режим только для чтения.`);
-        } else {
-          setReadOnly(false);
-        }
-      } else if (otherLock) {
+      if (otherLock) {
         // Гостя пускаем только в просмотр — без авторизации работать нельзя,
         // и уж тем более нельзя давать ему создавать/снимать блокировку.
-        setReadOnly(true);
-        setIsAuthenticatedUser(false);
+        setViewMode('read');
       } else {
-        setIsAuthenticatedUser(false);
-        setReadOnly(false);
+        setViewMode('none');
       }
       setIsAuthChecked(true);
     };
     checkAuth();
   }, []);
 
-  // Проверка блокировки файла другим пользователем + реакция на потерю своей
-  useEffect(() => {
-    if (isLocked && lockInfo && isAuthenticatedUser && !readOnly) {
-      const currentUser = getCurrentUser();
-      // Если файл заблокирован ДРУГИМ пользователем
-      if (currentUser && lockInfo.userId !== currentUser.id) {
-        setReadOnly(true);
-        toast.error(`🔒 Файл заблокирован пользователем: ${lockInfo.computerName}. Режим только для чтения.`);
-      }
-    }
-  }, [isLocked, lockInfo, isAuthenticatedUser, readOnly]);
 
   // Если фоновое продление не смогло продлить нашу блокировку (она истекла
   // или её занял другой) — немедленно переходим в режим только для чтения,
@@ -102,10 +129,10 @@ function AppContent() {
       const status = await checkLockStatus();
       const currentUser = getCurrentUser();
       if (status.locked && status.lockInfo && currentUser && status.lockInfo.userId !== currentUser.id) {
-        setReadOnly(true);
-        toast.error(`🔒 Ваша блокировка перехвачена пользователем: ${status.lockInfo.computerName}. Включён режим только для чтения.`);
+        setViewMode('read');
+        toast.error(`🔒 Файл заблокирован пользователем: ${status.lockInfo.computerName}. Режим только для чтения.`);
       } else {
-        setReadOnly(true);
+        setViewMode('read');
         toast.warning('⚠️ Блокировка больше не активна — включён режим только для чтения. Сохраните изменения и войдите заново.');
       }
     });
@@ -221,18 +248,47 @@ function AppContent() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [state]);
 
-  const showStatus = (msg: string) => {
-    setStatusMessage(msg);
-    setTimeout(() => setStatusMessage('Готов к работе'), 3000);
-  };
-
-  // Выход из системы
+  // Выход из системы: чистим токен/пользователя, снимаем свою блокировку на
+  // сервере и возвращаемся на экран авторизации. ВАЖНО: раньше здесь стояло
+  // setIsAuthenticatedUser(false) + setReadOnly(false), но store-полинг мог в
+  // этот же момент принести «залипшую» блокировку (другой пользователь уже
+  // писал данные) — и useLockState мгновенно переключал нас обратно в read-only,
+  // показывая данные как «неавторизованному гостю». Теперь выход — это всегда
+  // viewMode='none' (экран логина), а не автовход в просмотр.
   const handleLogout = async () => {
     if (!confirm('Выйти из системы?')) return;
+
+    // Явно освобождаем СВОЮ блокировку ДО выхода (logout на сервере делает
+    // releaseLock по userId). Иначе lock.json остаётся висеть до TTL (5 мин),
+    // и следующий зашедший увидит чужую «призрачную» блокировку.
+    try {
+      if (getCurrentUser()) {
+        await releaseLock();
+      }
+    } catch (e) {
+      console.error('Не удалось снять блокировку при выходе:', e);
+    }
+
     await logout();
-    setIsAuthenticatedUser(false);
-    setReadOnly(false);
+    stopActivityTracking();
+    stopLockExtension();
+    setShowInactivityWarning(false);
+    setViewMode('none');
     toast.info('Вы вышли из системы');
+  };
+
+  const handleAuthSuccess = () => {
+    // При успешном входе запускаем фоновое продление блокировки. Раньше оно
+    // стартовало только после первого POST /api/data (см. store.tsx), поэтому
+    // если новый пользователь ещё ничего не сохранял, его блокировка вообще
+    // не поддерживалась и могла истечь/исчезнуть — отсюда ощущение, что
+    // «блокировка не сразу подхватывается».
+    startLockExtension();
+    setViewMode('edit');
+  };
+
+  const handleReadOnlyMode = () => {
+    setViewMode('read');
   };
 
   // Сохранение в файл (TSV формат)
@@ -298,7 +354,6 @@ function AppContent() {
     a.click();
     URL.revokeObjectURL(url);
     toast.success(`Сохранено: авто — ${state.autoRecords.length}, услуг — ${state.serviceRecords.length}`);
-    showStatus(`💾 Сохранено: авто — ${state.autoRecords.length}, услуг — ${state.serviceRecords.length}`);
   };
 
   // Загрузка из файла
@@ -306,7 +361,7 @@ function AppContent() {
     fileInputRef.current?.click();
   };
 
-  const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelected = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -356,7 +411,7 @@ function AppContent() {
           
           if (type === 'auto') {
             autoRecords.push({
-              id: Math.random().toString(36).substr(2, 9),
+              id: generateId(),
               car_number: cols[1],
               car_type: cols[2],
               carrier: cols[3],
@@ -369,7 +424,7 @@ function AppContent() {
           } else if (type === 'service') {
             const paymentType = cols[5] === 'Почасовая' ? 'hourly' : 'fixed';
             serviceRecords.push({
-              id: Math.random().toString(36).substr(2, 9),
+              id: generateId(),
               service_type: cols[2],
               carrier: cols[3],
               quantity: parseInt(cols[4]) || 1,
@@ -422,7 +477,6 @@ function AppContent() {
         }
         
         toast.success(`Загружено: авто — ${autoRecords.length}, услуг — ${serviceRecords.length} (${mode === 'replace' ? 'замена' : 'добавление'})`);
-        showStatus(`📂 Загружено: авто — ${autoRecords.length}, услуг — ${serviceRecords.length}`);
       } catch (err) {
         toast.error('Ошибка чтения файла: ' + (err as Error).message);
       }
@@ -439,7 +493,6 @@ function AppContent() {
     }
     dispatch({ type: 'CLEAR_ALL' });
     toast.info('Создан новый файл');
-    showStatus('📄 Создан новый файл');
   };
 
   const tabs = [
@@ -466,18 +519,12 @@ function AppContent() {
     );
   }
 
-  // Если пользователь не авторизован и не в режиме просмотра - показываем экран авторизации
-  if (!isAuthenticatedUser && !readOnly) {
+  // Если не авторизованы и не в режиме просмотра — показываем экран авторизации.
+  if (!inApp) {
     return (
       <AuthScreen 
-        onAuthSuccess={() => {
-          setIsAuthenticatedUser(true);
-          setReadOnly(false);
-        }}
-        onReadOnlyMode={() => {
-          setReadOnly(true);
-          setIsAuthenticatedUser(false);
-        }}
+        onAuthSuccess={handleAuthSuccess}
+        onReadOnlyMode={handleReadOnlyMode}
         darkMode={darkMode}
       />
     );
@@ -625,13 +672,12 @@ function AppContent() {
       {/* Содержимое — занимает всё оставшееся место */}
       <main className="flex-1 max-w-full mx-auto px-4 py-4 w-full flex flex-col min-h-0 overflow-hidden">
         <div className="flex-1 min-h-0">
-          <ActiveComponent onStatus={showStatus} darkMode={darkMode} readOnly={readOnly} />
+          <ActiveComponent darkMode={darkMode} readOnly={readOnly} />
         </div>
       </main>
 
       {/* Строка состояния — всегда внизу */}
-      <footer className={`border-t px-4 py-2 flex items-center justify-between text-xs flex-shrink-0 ${darkMode ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-white border-gray-200 text-gray-500'}`}>
-        <span>{statusMessage}</span>
+      <footer className={`border-t px-4 py-2 flex justify-end text-xs flex-shrink-0 ${darkMode ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-white border-gray-200 text-gray-500'}`}>
         <span>{currentTime.toLocaleDateString('ru-RU')} {currentTime.toLocaleTimeString('ru-RU')}</span>
       </footer>
 

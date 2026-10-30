@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, type KeyboardEvent } from 'react';
 import { useStore } from '../store';
 import { useToast } from './Toast';
 import { CarRecord, CarInBase, formatPlateDisplay as formatPlateDisplaySafe, calcDurationHours, calcAutoCost, formatNumber, formatDate, generateId, normalizePlate, isValidPlateFormat, plateFormatHint } from '../types';
@@ -14,12 +14,11 @@ const TIME_OPTIONS: string[] = Array.from({ length: 48 }, (_, i) => {
 });
 
 interface Props {
-  onStatus?: (msg: string) => void;
   darkMode?: boolean;
   readOnly?: boolean;
 }
 
-export default function AutoTab({ onStatus, darkMode = false, readOnly = false }: Props) {
+export default function AutoTab({ darkMode = false, readOnly = false }: Props) {
   const { state, dispatch } = useStore();
   const toast = useToast();
 
@@ -305,7 +304,8 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
     setCoefficient('1.5');
     setUseCoefficient(false);
     toast.success(`Автомобиль ${displayForMsg} добавлен`);
-    onStatus?.(`✅ Автомобиль ${displayForMsg} добавлен`);
+    toast.success(`✅ Автомобиль ${displayForMsg} добавлен`);
+
   };
 
   // Удаление одной записи
@@ -314,7 +314,8 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
       dispatch({ type: 'DELETE_AUTO_RECORD', payload: id });
       setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
       toast.success('Запись удалена');
-      onStatus?.('🗑️ Запись удалена');
+      toast.error('🗑️ Запись удалена');
+
     }
   };
 
@@ -332,7 +333,8 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
     const count = selectedIds.size;
     setSelectedIds(new Set());
     toast.success(`Удалено записей: ${count}`);
-    onStatus?.(`🗑️ Удалено записей: ${count}`);
+    toast.error(`🗑️ Удалено записей: ${count}`);
+
   };
 
   // Выбор всех / снять все
@@ -353,7 +355,7 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
   };
 
   // Обработка клавиш в поле номера: стрелки — навигация по подсказкам, Enter — выбор/добавление
-  const handleKeyDown = (e: React.KeyboardEvent, source: 'plate' | 'other' = 'other') => {
+  const handleKeyDown = (e: KeyboardEvent, source: 'plate' | 'other' = 'other') => {
     if (source === 'plate') {
       if (showDropdown && plateSuggestions.length > 0) {
         if (e.key === 'ArrowDown') {
@@ -572,17 +574,20 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
           <table className="w-full text-sm">
             <thead className={`sticky top-0 z-10 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
               <tr>
-                {!readOnly && (
+                {/* Колонка чекбоксов: в режиме только чтения скрываем сам чекбокс
+                    «выбрать все», но колонку оставляем — иначе ячейки tbody
+                    съезжают относительно заголовков. */}
                 <th className={`px-2 py-2 text-center w-8 sticky left-0 z-20 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                  <button onClick={toggleSelectAll} title="Выбрать все">
-                    {filteredRecords.length > 0 && selectedIds.size === filteredRecords.length ? (
-                      <CheckSquare size={16} className="text-blue-600" />
-                    ) : (
-                      <Square size={16} className={darkMode ? 'text-gray-500' : 'text-gray-400'} />
-                    )}
-                  </button>
+                  {!readOnly && (
+                    <button onClick={toggleSelectAll} title="Выбрать все">
+                      {filteredRecords.length > 0 && selectedIds.size === filteredRecords.length ? (
+                        <CheckSquare size={16} className="text-blue-600" />
+                      ) : (
+                        <Square size={16} className={darkMode ? 'text-gray-500' : 'text-gray-400'} />
+                      )}
+                    </button>
+                  )}
                 </th>
-                )}
                 <th className={`px-2 py-2 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>№ ТС</th>
                 <th className={`px-2 py-2 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Тип ТС</th>
                 <th className={`px-2 py-2 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Перевозчик</th>
@@ -593,7 +598,12 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
                 <th className={`px-2 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Тариф</th>
                 <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Дата</th>
                 <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Коэф.</th>
-                <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>⚙️</th>
+                {/* Колонка действий: в режиме только чтения скрываем кнопки, но саму
+                    колонку оставляем (пустым <th/>), чтобы ячейки tbody не съезжали
+                    влево относительно заголовков. */}
+                <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} ${readOnly ? 'w-8' : ''}`}>
+                  {!readOnly && '⚙️'}
+                </th>
               </tr>
             </thead>
             <tbody>

@@ -3,12 +3,11 @@ import { useStore } from '../store';
 import { calcDurationHours, calcAutoCost, calcServiceHours, calcServiceCost, formatNumber } from '../types';
 
 interface Props {
-  onStatus?: (msg: string) => void;
   darkMode?: boolean;
   readOnly?: boolean;
 }
 
-export default function StatsTab({ onStatus, darkMode = false, readOnly = false }: Props) {
+export default function StatsTab({ darkMode = false, readOnly = false }: Props) {
   const { state } = useStore();
 
   const defaultEnd = new Date().toISOString().split('T')[0];

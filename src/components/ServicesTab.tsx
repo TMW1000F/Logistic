@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, type KeyboardEvent } from 'react';
 import { useStore } from '../store';
 import { useToast } from './Toast';
 import { ServiceRecord, calcServiceHours, calcServiceCost, formatNumber, formatDate, generateId } from '../types';
@@ -14,12 +14,11 @@ const TIME_OPTIONS: string[] = Array.from({ length: 48 }, (_, i) => {
 });
 
 interface Props {
-  onStatus?: (msg: string) => void;
   darkMode?: boolean;
   readOnly?: boolean;
 }
 
-export default function ServicesTab({ onStatus, darkMode = false, readOnly = false }: Props) {
+export default function ServicesTab({ darkMode = false, readOnly = false }: Props) {
   const { state, dispatch } = useStore();
   const toast = useToast();
 
@@ -252,7 +251,8 @@ export default function ServicesTab({ onStatus, darkMode = false, readOnly = fal
     setCoefficient('1.5');
     setUseCoefficient(false);
     toast.success(`Услуга "${serviceType}" добавлена`);
-    onStatus?.(`✅ Услуга "${serviceType}" добавлена`);
+    toast.success(`✅ Услуга "${serviceType}" добавлена`);
+
   };
 
   // Удаление
@@ -261,7 +261,8 @@ export default function ServicesTab({ onStatus, darkMode = false, readOnly = fal
       dispatch({ type: 'DELETE_SERVICE_RECORD', payload: id });
       setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
       toast.success('Запись удалена');
-      onStatus?.('🗑️ Запись удалена');
+      toast.error('🗑️ Запись удалена');
+
     }
   };
 
@@ -278,7 +279,8 @@ export default function ServicesTab({ onStatus, darkMode = false, readOnly = fal
     const count = selectedIds.size;
     setSelectedIds(new Set());
     toast.success(`Удалено записей: ${count}`);
-    onStatus?.(`🗑️ Удалено записей: ${count}`);
+    toast.error(`🗑️ Удалено записей: ${count}`);
+
   };
 
   const toggleSelectAll = () => {
@@ -297,7 +299,7 @@ export default function ServicesTab({ onStatus, darkMode = false, readOnly = fal
     });
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
       handleSave();
     }
@@ -410,17 +412,20 @@ export default function ServicesTab({ onStatus, darkMode = false, readOnly = fal
           <table className="w-full text-sm">
             <thead className={`sticky top-0 z-10 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
               <tr>
-                {!readOnly && (
+                {/* Колонка чекбоксов: в режиме только чтения скрываем сам чекбокс
+                    «выбрать все», но колонку оставляем — иначе ячейки tbody
+                    съезжают относительно заголовков. */}
                 <th className={`px-2 py-2 text-center w-8 sticky left-0 z-20 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                  <button onClick={toggleSelectAll}>
-                    {filteredRecords.length > 0 && selectedIds.size === filteredRecords.length ? (
-                      <CheckSquare size={16} className="text-green-600" />
-                    ) : (
-                      <Square size={16} className={darkMode ? 'text-gray-500' : 'text-gray-400'} />
-                    )}
-                  </button>
+                  {!readOnly && (
+                    <button onClick={toggleSelectAll}>
+                      {filteredRecords.length > 0 && selectedIds.size === filteredRecords.length ? (
+                        <CheckSquare size={16} className="text-green-600" />
+                      ) : (
+                        <Square size={16} className={darkMode ? 'text-gray-500' : 'text-gray-400'} />
+                      )}
+                    </button>
+                  )}
                 </th>
-                )}
                 <th className={`px-2 py-2 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Тип услуги</th>
                 <th className={`px-2 py-2 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Компания</th>
                 <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Кол-во</th>
@@ -431,7 +436,12 @@ export default function ServicesTab({ onStatus, darkMode = false, readOnly = fal
                 <th className={`px-2 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Тариф</th>
                 <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Дата</th>
                 <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Коэф.</th>
-                <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>⚙️</th>
+                {/* Колонка действий: в режиме только чтения скрываем кнопки, но саму
+                    колонку оставляем (пустым <th/>), чтобы ячейки tbody не съезжали
+                    влево относительно заголовков. */}
+                <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} ${readOnly ? 'w-8' : ''}`}>
+                  {!readOnly && '⚙️'}
+                </th>
               </tr>
             </thead>
             <tbody>
