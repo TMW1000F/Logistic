@@ -568,15 +568,18 @@ function inLan(ip) {
 
 // Доступ к сервису бэкапов: только из локальной сети (loopback + частные диапазоны)
 function isLanRequest(req) {
-  const raw = (req.ip || '').replace('::ffff:', '');
-  if (raw === '::1') return true;
-  if (raw.includes(':')) return false; // прочие IPv6 считаем внешними
+  let raw = (req.ip || req.socket?.remoteAddress || '').replace('::ffff:', '');
+  if (raw === '::1' || raw === '127.0.0.1') return true; // loopback по любому IP
+  if (raw === '::' || raw.startsWith(':')) return false; // прочие IPv6 считаем внешними
   return inLan(raw);
 }
 
 // Промежуточный обработчик: закрывает сервисные маршруты для внешних хостов
+// (сравнение по префиксу — чтобы /service.html тоже попадал под проверку)
 app.use((req, res, next) => {
-  if ((req.path.startsWith('/api/backup') || req.path === '/service') && !isLanRequest(req)) {
+  const isBackupApi = req.path === '/api/backup' || req.path.startsWith('/api/backup/');
+  const isServicePage = req.path === '/service' || req.path.startsWith('/service.');
+  if ((isBackupApi || isServicePage) && !isLanRequest(req)) {
     return res.status(403).json({ error: 'Доступ к сервису бэкапов возможен только из локальной сети' });
   }
   next();
@@ -852,9 +855,21 @@ app.delete('/api/backup/:id', async (req, res) => {
   }
 });
 
-// Страница сервиса бэкапов (оба адреса: /service и /service.html)
-const sendServicePage = (req, res) => {
-  res.sendFile(path.join(__dirname, 'service.html'));
+// Страница сервиса бэкапов (оба адреса: /service и /service.html).
+// service.html лежит в корне проекта; на всякий случай проверяем наличие файла
+// и отдаём понятную ошибку вместо зависания/404 от SPA-роутера.
+const SERVICE_PAGE_FILE = path.join(__dirname, 'service.html');
+const sendServicePage = async (req, res) => {
+  try {
+    await fs.access(SERVICE_PAGE_FILE);
+    res.sendFile(SERVICE_PAGE_FILE);
+  } catch {
+    res.status(500).type('html').send(
+      '<h2>Сервис бэкапов недоступен</h2>' +
+      '<p>На сервере не найден файл <code>service.html</code>. ' +
+      'Скопируйте его в папку проекта рядом с <code>server.js</code> и перезапустите сервер.</p>'
+    );
+  }
 };
 app.get('/service', sendServicePage);
 app.get('/service.html', sendServicePage);
