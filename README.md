@@ -52,6 +52,40 @@
 `AD_USER_HEADER` (по умолчанию `X-Forwarded-User`), `AD_DISPLAY_NAME_HEADER` (`X-Forwarded-Name`),
 `AD_GROUPS_HEADER` (`X-Forwarded-Groups`).
 
+### Пример настройки nginx (open source) + Kerberos через helper
+
+Важно: в обычном nginx **нет** встроенной аутентификации Kerberos/NTLM, поэтому `$remote_user`
+пустой и `proxy_set_header X-Forwarded-User $remote_user;` ничего не передаёт.
+Требуется модуль/механизм проверки билета (например, `auth_request` на helper-сервис,
+проверяющий Kerberos/NTLM и возвращающий логин в заголовке ответа):
+
+```nginx
+location = /_ad-auth {
+    internal;
+    proxy_pass http://127.0.0.1:8081/ad-check;   # helper, проверяющий Kerberos/NTLM
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length "";
+    proxy_set_header Authorization $http_authorization;
+}
+
+location /api/ {
+    auth_request /_ad-auth;
+    auth_request_set $ad_user $upstream_http_x_remote_user;
+    proxy_set_header X-Forwarded-User $ad_user;  # helper вернул логин в X-Remote-User
+    proxy_pass http://127.0.0.1:3001;
+}
+```
+
+Если вместо nginx используется IIS с Windows Authentication — добавьте в ARR outbound rule:
+Server Variable `LOGON_USER` → Request Header `X-Forwarded-User`.
+
+Для быстрой локальной проверки без прокси можно запустить сервер с подстановкой логина
+(работает только для запросов с 127.0.0.1, удалённых пользователей не пропускает):
+
+```bash
+MOCK_AD_USER=shavlakovav@nsk.tlcn.ru node server.js
+```
+
 ### Отладка входа по Active Directory (DEBUG_AD)
 
 Если при «Входе для редактирования» появляется ошибка «Не удалось определить пользователя из Active Directory»,
