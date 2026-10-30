@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useStore } from '../store';
 import { useToast } from './Toast';
 import { ServiceRecord, calcServiceHours, calcServiceCost, formatNumber, formatDate, generateId } from '../types';
@@ -29,7 +29,7 @@ export default function ServicesTab({ onStatus, darkMode = false, readOnly = fal
   const [quantity, setQuantity] = useState(1);
   const [paymentType, setPaymentType] = useState<'hourly' | 'fixed'>('hourly');
   const [arrival, setArrival] = useState('08:00');
-  const [departure, setDeparture] = useState('17:00');
+  const [departure, setDeparture] = useState('16:00');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [useCoefficient, setUseCoefficient] = useState(false);
   const [coefficient, setCoefficient] = useState('1.5');
@@ -104,14 +104,15 @@ export default function ServicesTab({ onStatus, darkMode = false, readOnly = fal
       records = records.filter(r => r.date >= dateRangeStart && r.date <= dateRangeEnd);
     }
 
-    // Сортировка: самые свежие записи — вверху (по дате и времени окончания)
-    records.sort((a, b) => {
-      if (a.date !== b.date) return b.date.localeCompare(a.date);
-      return (b.departure || '').localeCompare(a.departure || '');
-    });
-
     return records;
   }, [state.serviceRecords, filterTags, searchQuery, dateRangeEnabled, dateRangeStart, dateRangeEnd]);
+
+  // Ссылка на прокручиваемый контейнер таблицы и автоскролл вниз при добавлении записей
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = tableScrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [state.serviceRecords.length]);
 
   // Добавление тега
   const addFilterTag = (field: string, value: string) => {
@@ -246,7 +247,7 @@ export default function ServicesTab({ onStatus, darkMode = false, readOnly = fal
     setQuantity(1);
     setPaymentType('hourly');
     setArrival('08:00');
-    setDeparture('17:00');
+    setDeparture('16:00');
     setDate(new Date().toISOString().split('T')[0]);
     setCoefficient('1.5');
     setUseCoefficient(false);
@@ -405,7 +406,7 @@ export default function ServicesTab({ onStatus, darkMode = false, readOnly = fal
         </div>
 
         {/* Таблица — прокручивается только она */}
-        <div className="flex-1 overflow-auto">
+        <div ref={tableScrollRef} className="flex-1 overflow-auto">
           <table className="w-full text-sm">
             <thead className={`sticky top-0 z-10 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
               <tr>

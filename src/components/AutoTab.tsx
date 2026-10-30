@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useStore } from '../store';
 import { useToast } from './Toast';
 import { CarRecord, CarInBase, formatPlateDisplay as formatPlateDisplaySafe, calcDurationHours, calcAutoCost, formatNumber, formatDate, generateId, normalizePlate, isValidPlateFormat, plateFormatHint } from '../types';
@@ -31,7 +31,7 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
   const [carType, setCarType] = useState('');
   const [carrier, setCarrier] = useState('');
   const [arrival, setArrival] = useState('08:00');
-  const [departure, setDeparture] = useState('17:00');
+  const [departure, setDeparture] = useState('16:00');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [useCoefficient, setUseCoefficient] = useState(false);
   const [coefficient, setCoefficient] = useState('1.5');
@@ -141,14 +141,15 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
       records = records.filter(r => r.date >= dateRangeStart && r.date <= dateRangeEnd);
     }
 
-    // Сортировка: самые свежие записи — вверху (по дате и времени убытия)
-    records.sort((a, b) => {
-      if (a.date !== b.date) return b.date.localeCompare(a.date);
-      return (b.departure || '').localeCompare(a.departure || '');
-    });
-
     return records;
   }, [state.autoRecords, filterTags, searchQuery, dateRangeEnabled, dateRangeStart, dateRangeEnd]);
+
+  // Ссылка на прокручиваемый контейнер таблицы и автоскролл вниз при добавлении записей
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = tableScrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [state.autoRecords.length]);
 
   // Добавление тега-фильтра
   const addFilterTag = (field: string, value: string) => {
@@ -299,7 +300,7 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
     // Очищаем форму ввода после успешного добавления (по кнопке или Enter)
     selectCar(null);
     setArrival('08:00');
-    setDeparture('17:00');
+    setDeparture('16:00');
     setDate(new Date().toISOString().split('T')[0]);
     setCoefficient('1.5');
     setUseCoefficient(false);
@@ -567,7 +568,7 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
         </div>
 
         {/* Таблица — прокручивается только она */}
-        <div className="flex-1 overflow-auto">
+        <div ref={tableScrollRef} className="flex-1 overflow-auto">
           <table className="w-full text-sm">
             <thead className={`sticky top-0 z-10 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
               <tr>
