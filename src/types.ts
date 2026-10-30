@@ -89,6 +89,17 @@ export interface AppState {
 
 // ==================== Утилиты расчёта ====================
 
+// Время приводится к шагу 30 минут: минуты допускаются только 0 или 30
+export function snapToHalfHour(time: string): string {
+  const m = /^(\d{1,2}):(\d{2})/.exec(time || '');
+  if (!m) return time;
+  let h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  if (min >= 45) h += 1; // округляем к ближайшему полчаса
+  h = ((h % 24) + 24) % 24;
+  return `${String(h).padStart(2, '0')}:${min >= 30 ? '30' : '00'}`;
+}
+
 export function calcDurationHours(arrival: string, departure: string): number {
   const [ah, am] = arrival.split(':').map(Number);
   const [dh, dm] = departure.split(':').map(Number);
@@ -132,4 +143,30 @@ export function formatDate(dateStr: string): string {
 
 export function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+}
+
+// ==================== Ненавязчивый звук подтверждения ====================
+// Короткий мягкий «клик» через Web Audio API (без внешних файлов).
+let audioCtx: AudioContext | null = null;
+export function playAddClick() {
+  try {
+    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    audioCtx = audioCtx ?? new Ctx();
+    if (audioCtx.state === 'suspended') void audioCtx.resume();
+    const t0 = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(880, t0);
+    osc.frequency.exponentialRampToValueAtTime(1320, t0 + 0.045);
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(0.12, t0 + 0.008); // негромко
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.09); // коротко
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t0);
+    osc.stop(t0 + 0.1);
+  } catch {
+    /* звук не критичен — молча пропускаем */
+  }
 }

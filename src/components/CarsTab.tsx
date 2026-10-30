@@ -2,7 +2,7 @@ import { useState, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { useStore } from '../store';
 import { useToast } from './Toast';
-import { CarInBase, normalizePlate, formatPlateDisplay, isValidPlateFormat, plateFormatHint, generateId } from '../types';
+import { CarInBase, normalizePlate, formatPlateDisplay, isValidPlateFormat, plateFormatHint, generateId, playAddClick } from '../types';
 import { Plus, Edit, Trash2, X, Car, Search, Download, Upload } from 'lucide-react';
 
 interface Props {
@@ -161,9 +161,16 @@ export default function CarsTab({ onStatus, darkMode = false, readOnly = false }
     };
 
     dispatch({ type: 'SAVE_CAR', payload: car });
-    toast.success(editingId ? `Автомобиль ${display} обновлён` : `Автомобиль ${display} добавлен в базу`);
-    onStatus?.(editingId ? `✏️ Автомобиль ${display} обновлён` : `🚗 Автомобиль ${display} добавлен в базу`);
+    const wasEdit = !!editingId;
+    // Ненавязчивый звук подтверждения добавления
+    if (!wasEdit) playAddClick();
+    toast.success(wasEdit ? `Автомобиль ${display} обновлён` : `Автомобиль ${display} добавлен в базу`);
+    onStatus?.(wasEdit ? `✏️ Автомобиль ${display} обновлён` : `🚗 Автомобиль ${display} добавлен в базу`);
     resetForm();
+    // После добавления нового авто фокус снова в поле госномера (оно очищено) — можно вводить следующее
+    if (!wasEdit) {
+      setTimeout(() => formRef.current?.querySelector<HTMLInputElement>('input[type=text]')?.focus(), 50);
+    }
   };
 
   const handleDelete = (car: CarInBase) => {

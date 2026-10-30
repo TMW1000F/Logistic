@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useStore } from '../store';
 import { useToast } from './Toast';
-import { ServiceRecord, calcServiceHours, calcServiceCost, formatNumber, formatDate, generateId } from '../types';
+import { ServiceRecord, calcServiceHours, calcServiceCost, formatNumber, formatDate, generateId, playAddClick } from '../types';
+import HalfHourTimeSelect from './HalfHourTimeSelect';
 import { Plus, Trash2, CheckSquare, Square } from 'lucide-react';
 import SearchAndTags, { FilterTag } from './SearchAndTags';
 
@@ -234,6 +235,8 @@ export default function ServicesTab({ onStatus, darkMode = false, readOnly = fal
     };
 
     dispatch({ type: 'ADD_SERVICE_RECORD', payload: record });
+    // Ненавязчивый звук подтверждения добавления
+    playAddClick();
     setQuantity(1);
     setUseCoefficient(false);
     toast.success(`Услуга "${serviceType}" добавлена`);
@@ -334,11 +337,11 @@ export default function ServicesTab({ onStatus, darkMode = false, readOnly = fal
             <>
               <div>
                 <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Начало:</label>
-                <input type="time" value={arrival} onChange={e => setArrival(e.target.value)} step="1800" className={`border rounded px-2 py-1 text-sm w-28 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                <HalfHourTimeSelect value={arrival} onChange={setArrival} darkMode={darkMode} className="w-24" />
               </div>
               <div>
                 <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Окончание:</label>
-                <input type="time" value={departure} onChange={e => setDeparture(e.target.value)} step="1800" className={`border rounded px-2 py-1 text-sm w-28 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                <HalfHourTimeSelect value={departure} onChange={setDeparture} darkMode={darkMode} className="w-24" />
               </div>
             </>
           )}

@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useStore } from '../store';
 import { useToast } from './Toast';
-import { CarRecord, CarInBase, formatPlateDisplay as formatPlateDisplaySafe, calcDurationHours, calcAutoCost, formatNumber, formatDate, generateId, normalizePlate, isValidPlateFormat, plateFormatHint } from '../types';
+import { CarRecord, CarInBase, formatPlateDisplay as formatPlateDisplaySafe, calcDurationHours, calcAutoCost, formatNumber, formatDate, generateId, normalizePlate, isValidPlateFormat, plateFormatHint, playAddClick } from '../types';
+import HalfHourTimeSelect from './HalfHourTimeSelect';
 import { Plus, Trash2, CheckSquare, Square } from 'lucide-react';
 import SearchAndTags, { FilterTag } from './SearchAndTags';
 
@@ -287,6 +288,8 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
     };
 
     dispatch({ type: 'ADD_AUTO_RECORD', payload: record });
+    // Ненавязчивый звук подтверждения добавления
+    playAddClick();
     // Оставляем выбранный автомобиль для быстрого ввода нескольких рейсов подряд
     setUseCoefficient(false);
     toast.success(`Автомобиль ${selectedCar?.display ?? formatPlateDisplaySafe(record.car_number)} добавлен`);
@@ -456,22 +459,20 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
           </div>
           <div>
             <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Прибытие:</label>
-            <input
-              type="time"
+            <HalfHourTimeSelect
               value={arrival}
-              onChange={e => setArrival(e.target.value)}
-              step="1800"
-              className={`border rounded px-2 py-1 text-sm w-28 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+              onChange={setArrival}
+              darkMode={darkMode}
+              className="w-24"
             />
           </div>
           <div>
             <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Убытие:</label>
-            <input
-              type="time"
+            <HalfHourTimeSelect
               value={departure}
-              onChange={e => setDeparture(e.target.value)}
-              step="1800"
-              className={`border rounded px-2 py-1 text-sm w-28 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+              onChange={setDeparture}
+              darkMode={darkMode}
+              className="w-24"
             />
           </div>
           <div className="flex items-center gap-1">
