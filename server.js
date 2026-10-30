@@ -858,17 +858,37 @@ app.delete('/api/backup/:id', async (req, res) => {
 // Страница сервиса бэкапов (оба адреса: /service и /service.html).
 // service.html лежит в корне проекта; на всякий случай проверяем наличие файла
 // и отдаём понятную ошибку вместо зависания/404 от SPA-роутера.
-const SERVICE_PAGE_FILE = path.join(__dirname, 'service.html');
-const sendServicePage = async (req, res) => {
+// Ищем service.html: сначала рядом с server.js, затем в стандартных местах
+// запуска Node (текущая директория процесса, домашняя папка пользователя).
+const SERVICE_PAGE_CANDIDATES = [
+  path.join(__dirname, 'service.html'),
+  path.resolve(process.cwd(), 'service.html'),
+  path.join(process.env.USERPROFILE || process.env.HOME || '', 'service.html'),
+];
+let SERVICE_PAGE_FILE = null;
+for (const p of SERVICE_PAGE_CANDIDATES) {
   try {
-    await fs.access(SERVICE_PAGE_FILE);
-    res.sendFile(SERVICE_PAGE_FILE);
-  } catch {
+    await fs.access(p);
+    SERVICE_PAGE_FILE = p;
+    break;
+  } catch {}
+}
+
+const sendServicePage = async (req, res) => {
+  if (!SERVICE_PAGE_FILE) {
     res.status(500).type('html').send(
       '<h2>Сервис бэкапов недоступен</h2>' +
-      '<p>На сервере не найден файл <code>service.html</code>. ' +
+      `<p>На сервере не найден файл <code>service.html</code>. Искали в: ${SERVICE_PAGE_CANDIDATES.map(p => '<code>' + p + '</code>').join(', ')}. ` +
       'Скопируйте его в папку проекта рядом с <code>server.js</code> и перезапустите сервер.</p>'
     );
+    return;
+  }
+  // Файл мог появиться/обновиться после запуска — перечитываем его при каждом запросе
+  try {
+    const html = await fs.readFile(SERVICE_PAGE_FILE, 'utf-8');
+    res.type('html').send(html);
+  } catch (e) {
+    res.status(500).type('html').send('<h2>Не удалось прочитать service.html: ' + e.message + '</h2>');
   }
 };
 app.get('/service', sendServicePage);
@@ -886,6 +906,8 @@ app.get('/{*splat}', (req, res) => {
 Promise.all([initDataFile(), initUsersFile()]).then(() => {
   app.listen(PORT, () => {
     console.log(`\n🚀 Сервер запущен на http://localhost:${PORT}`);
+    console.log(`🔧 build: service-v2 (если этой строки нет в логе — запущен СТАРЫЙ server.js)`)
+    console.log(`💾 Сервис бэкапов: http://localhost:${PORT}/service (${SERVICE_PAGE_FILE ? SERVICE_PAGE_FILE : 'service.html НЕ НАЙДЕН!'})`);
     console.log(`📊 API доступен на http://localhost:${PORT}/api`);
     console.log(`💾 Данные хранятся в: ${DATA_FILE}`);
     console.log(`👥 Пользователи хранятся в: ${USERS_FILE}\n`);
