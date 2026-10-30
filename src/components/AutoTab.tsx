@@ -4,6 +4,19 @@ import { useToast } from './Toast';
 import { CarRecord, CarInBase, formatPlateDisplay as formatPlateDisplaySafe, calcDurationHours, calcAutoCost, formatNumber, formatDate, generateId, normalizePlate, isValidPlateFormat, plateFormatHint } from '../types';
 import { Plus, Trash2, CheckSquare, Square } from 'lucide-react';
 import SearchAndTags, { FilterTag } from './SearchAndTags';
+import { playClick } from '../sound';
+
+// Округление времени к ближайшим 0 или 30 минутам (шаг — 30 минут)
+const roundToHalfHour = (value: string): string => {
+  const m = /^(\d{1,2}):(\d{2})/.exec(value || '');
+  if (!m) return value;
+  let h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  const rounded = Math.round(min / 30) * 30;
+  if (rounded === 60) { h = (h + 1) % 24; }
+  const mm = rounded === 60 ? 0 : rounded;
+  return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+};
 
 interface Props {
   onStatus?: (msg: string) => void;
@@ -278,6 +291,7 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
     };
 
     dispatch({ type: 'ADD_AUTO_RECORD', payload: record });
+    playClick(); // ненавязчивый отклик об успешном добавлении
     // Оставляем выбранный автомобиль для быстрого ввода нескольких рейсов подряд
     setUseCoefficient(false);
     toast.success(`Автомобиль ${selectedCar?.display ?? formatPlateDisplaySafe(record.car_number)} добавлен`);
@@ -450,7 +464,7 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
             <input
               type="time"
               value={arrival}
-              onChange={e => setArrival(e.target.value)}
+              onChange={e => setArrival(roundToHalfHour(e.target.value))}
               step="1800"
               className={`border rounded px-2 py-1 text-sm w-28 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
             />
@@ -460,7 +474,7 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
             <input
               type="time"
               value={departure}
-              onChange={e => setDeparture(e.target.value)}
+              onChange={e => setDeparture(roundToHalfHour(e.target.value))}
               step="1800"
               className={`border rounded px-2 py-1 text-sm w-28 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
             />

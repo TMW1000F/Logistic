@@ -4,6 +4,19 @@ import { useToast } from './Toast';
 import { ServiceRecord, calcServiceHours, calcServiceCost, formatNumber, formatDate, generateId } from '../types';
 import { Plus, Trash2, CheckSquare, Square } from 'lucide-react';
 import SearchAndTags, { FilterTag } from './SearchAndTags';
+import { playClick } from '../sound';
+
+// Округление времени к ближайшим 0 или 30 минутам (шаг — 30 минут)
+const roundToHalfHour = (value: string): string => {
+  const m = /^(\d{1,2}):(\d{2})/.exec(value || '');
+  if (!m) return value;
+  let h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  const rounded = Math.round(min / 30) * 30;
+  if (rounded === 60) { h = (h + 1) % 24; }
+  const mm = rounded === 60 ? 0 : rounded;
+  return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+};
 
 interface Props {
   onStatus?: (msg: string) => void;
@@ -225,6 +238,7 @@ export default function ServicesTab({ onStatus, darkMode = false, readOnly = fal
     };
 
     dispatch({ type: 'ADD_SERVICE_RECORD', payload: record });
+    playClick(); // ненавязчивый отклик об успешном добавлении
     setQuantity(1);
     setUseCoefficient(false);
     toast.success(`Услуга "${serviceType}" добавлена`);
@@ -325,11 +339,11 @@ export default function ServicesTab({ onStatus, darkMode = false, readOnly = fal
             <>
               <div>
                 <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Начало:</label>
-                <input type="time" value={arrival} onChange={e => setArrival(e.target.value)} step="1800" className={`border rounded px-2 py-1 text-sm w-28 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                <input type="time" value={arrival} onChange={e => setArrival(roundToHalfHour(e.target.value))} step="1800" className={`border rounded px-2 py-1 text-sm w-28 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
               </div>
               <div>
                 <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Окончание:</label>
-                <input type="time" value={departure} onChange={e => setDeparture(e.target.value)} step="1800" className={`border rounded px-2 py-1 text-sm w-28 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                <input type="time" value={departure} onChange={e => setDeparture(roundToHalfHour(e.target.value))} step="1800" className={`border rounded px-2 py-1 text-sm w-28 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
               </div>
             </>
           )}
