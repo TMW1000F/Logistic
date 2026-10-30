@@ -41,25 +41,26 @@ console.log('📁 Путь к файлу данных:', DATA_FILE);
 console.log('📁 Путь к файлу блокировки:', LOCK_FILE);
 console.log('📁 Путь к файлу пользователей:', USERS_FILE);
 
-// Простое хеширование пароля (для продакшена использовать bcrypt)
-function hashPassword(password) {
-  let hash = 0;
-  for (let i = 0; i < password.length; i++) {
-    const char = password.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
-  }
-  return hash.toString(36);
-}
-
-// Инициализация файла пользователей
+// Инициализация файла пользователей (allow-list для доступа на редактирование)
 async function initUsersFile() {
   try {
     await fs.access(USERS_FILE);
     console.log('✅ Файл users.json найден');
   } catch {
     console.log('📝 Создаю новый файл users.json...');
-    await fs.writeFile(USERS_FILE, JSON.stringify([], null, 2));
+    // Пример: username — SAM-логин или userPrincipalName из Active Directory.
+    // allowed:false — запретить редактирование; adGroups — разрешённые группы AD
+    // (пустой массив = группа не важна).
+    const initialUsers = [
+      {
+        id: 'u1',
+        username: 'ivanov@corp.local',
+        displayName: 'Иванов И.И.',
+        allowed: true,
+        adGroups: []
+      }
+    ];
+    await fs.writeFile(USERS_FILE, JSON.stringify(initialUsers, null, 2));
     console.log('✅ Файл users.json создан');
   }
 }
@@ -270,80 +271,114 @@ async function releaseLock(userId) {
 // ==================== API Endpoints ====================
 
 // ==================== Авторизация ====================
+//
+// Приложение работает в корпоративной сети с Active Directory.
+// Регистрации и паролей нет: reverse-proxy (IIS с Windows Authentication,
+// Apache mod_auth_gssapi или Nginx+kerberos) проверяет Windows-идентификацию
+// пользователя (Kerberos/NTLM) и передаёт его сюда в HTTP-заголовке. Имя заголовка задаётся
+// переменной окружения AD_USER_HEADER (по умолчанию X-Forwarded-User),
+// имя для отображения — AD_DISPLAY_NAME_HEADER (по умолчанию X-Forwarded-Name),
+// список групп — AD_GROUPS_HEADER (по умолчанию X-Forwarded-Groups, через запятую).
+//
+// Пускать или не пускать человека решает файл users.json:
+//   - если AD-логина там нет — доступ на редактирование запрещён;
+//   - allowed:false — запрещён (например, уволился/перевёлся);
+//   - adGroups:[...] — пустой массив означает «любая группа не требуется»,
+//     непустой — хотя бы одна группа должна присутствовать в заголовке групп.
 
-// Регистрация нового пользователя
-app.post('/api/auth/register', async (req, res) => {
-  console.log('📝 POST /api/auth/register');
-  const { username, password, displayName } = req.body;
-  
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Имя пользователя и пароль обязательны' });
-  }
-  
-  const users = await readUsers();
-  
-  // Проверяем, существует ли пользователь
-  if (users.find(u => u.username === username)) {
-    return res.status(400).json({ error: 'Пользователь с таким именем уже существует' });
-  }
-  
-  // Создаём нового пользователя
-  const newUser = {
-    id: Date.now().toString(36),
-    username,
-    passwordHash: hashPassword(password),
-    displayName: displayName || username,
-    createdAt: new Date().toISOString()
-  };
-  
-  users.push(newUser);
-  await writeUsers(users);
-  
-  console.log(`✅ Пользователь зарегистрирован: ${username}`);
-  
-  // Возвращаем токен (простой - на основе id)
-  const token = newUser.id;
-  res.json({ 
-    success: true, 
-    token,
-    user: { 
-      id: newUser.id, 
-      username: newUser.username, 
-      displayName: newUser.displayName 
-    }
-  });
-});
+const AD_USER_HEADER = (process.env.AD_USER_HEADER || 'x-forwarded-user').toLowerCase();
+const AD_DISPLAY_NAME_HEADER = (process.env.AD_DISPLAY_NAME_HEADER || 'x-forwarded-name').toLowerCase();
+const AD_GROUPS_HEADER = (process.env.AD_GROUPS_HEADER || 'x-forwarded-groups').toLowerCase();
 
-// Вход пользователя
-app.post('/api/auth/login', async (req, res) => {
-  console.log('🔐 POST /api/auth/login');
-  const { username, password } = req.body;
-  
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Имя пользователя и пароль обязательны' });
+function normalizeAdUsername(raw) {
+  if (!raw) return null;
+  let name = String(raw).trim();
+  if (!name) return null;
+  // DOMAIN\user -> user@domain (приводим к единому виду UPN)
+  if (name.includes('\\')) {
+    const idx = name.lastIndexOf('\\');
+    const domain = name.slice(0, idx);
+    const user = name.slice(idx + 1);
+    if (user && domain) name = `${user}@${domain}`;
   }
-  
+  return name.toLowerCase();
+}
+
+// Сравнение AD-логинов: допускаем совпадение по samAccountName
+// (последний сегмент до @ или после \), чтобы не зависеть от написания домена.
+function adLoginMatches(storedUsername, headerLogin) {
+  const a = normalizeAdUsername(storedUsername);
+  if (!a || !headerLogin) return false;
+  if (a === headerLogin) return true;
+  const sam = s => s.split('@')[0];
+  return sam(a) === sam(headerLogin) && sam(a).length > 0;
+}
+
+function parseAdGroups(headerValue) {
+  if (!headerValue) return [];
+  return String(headerValue)
+    .split(/[,;]/)
+    .map(g => g.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+// Основной вход в систему: браузер сам прикладывает Windows-аутентификацию
+// (через reverse-proxy), пользователю не нужно ничего вводить.
+app.get('/api/auth/whoami', async (req, res) => {
+  console.log('🪪 GET /api/auth/whoami');
+
+  const adLoginRaw = req.headers[AD_USER_HEADER];
+  if (!adLoginRaw) {
+    console.log('🚫 whoami: нет заголовка', AD_USER_HEADER, '- прокси не передал данные AD');
+    return res.status(401).json({
+      error: 'Не удалось определить пользователя из Active Directory. Проверьте, что сайт открыт через корпоративный прокси с Windows-аутентификацией.'
+    });
+  }
+
+  const adLogin = normalizeAdUsername(adLoginRaw);
   const users = await readUsers();
-  const user = users.find(u => u.username === username);
-  
+  const user = users.find(u => adLoginMatches(u.username, adLogin));
+
   if (!user) {
-    return res.status(401).json({ error: 'Пользователь не найден' });
+    console.log(`🚫 whoami: пользователь ${adLogin} отсутствует в allow-list (users.json)`);
+    return res.status(403).json({
+      error: 'Доступ к редактированию запрещён. Вас нет в списке разрешённых пользователей — обратитесь к администратору.',
+      adLogin
+    });
   }
-  
-  if (user.passwordHash !== hashPassword(password)) {
-    return res.status(401).json({ error: 'Неверный пароль' });
+
+  if (user.allowed === false) {
+    console.log(`🚫 whoami: пользователь ${adLogin} заблокирован в users.json (allowed:false)`);
+    return res.status(403).json({
+      error: 'Доступ к редактированию запрещён. Ваша учётная запись отключена администратором.',
+      adLogin
+    });
   }
-  
-  console.log(`✅ Пользователь вошёл: ${username}`);
-  
-  const token = user.id;
-  res.json({ 
-    success: true, 
-    token,
-    user: { 
-      id: user.id, 
-      username: user.username, 
-      displayName: user.displayName 
+
+  // Фильтрация по группам AD, если они заданы для пользователя
+  if (Array.isArray(user.adGroups) && user.adGroups.length > 0) {
+    const groups = parseAdGroups(req.headers[AD_GROUPS_HEADER]);
+    const required = user.adGroups.map(g => String(g).toLowerCase());
+    const hasGroup = required.some(g => groups.includes(g));
+    if (!hasGroup) {
+      console.log(`🚫 whoami: у ${adLogin} нет ни одной требуемой группы (${required.join(', ')})`);
+      return res.status(403).json({
+        error: `Доступ разрешён только участникам групп: ${user.adGroups.join(', ')}.`,
+        adLogin
+      });
+    }
+  }
+
+  const displayName = req.headers[AD_DISPLAY_NAME_HEADER] || user.displayName || adLoginRaw;
+
+  console.log(`✅ whoami: допущен к редактированию ${adLogin}`);
+  res.json({
+    success: true,
+    token: user.id,
+    user: {
+      id: user.id,
+      username: user.username,
+      displayName
     }
   });
 });

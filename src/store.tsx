@@ -62,6 +62,10 @@ interface StoreContextType {
   lockInfo: { userId: string; computerName: string } | null;
   isLoading: boolean;
   error: string | null;
+  // true — включён режим «только просмотр» (гость или заблокирован другими);
+  // в этом режиме автосохранение на сервер полностью отключено.
+  guestReadOnly: boolean;
+  setGuestReadOnly: (value: boolean) => void;
 }
 
 const StoreContext = createContext<StoreContextType | null>(null);
@@ -74,6 +78,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [syncTimeout, setSyncTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
   const [hasLoaded, setHasLoaded] = useState(false); // Флаг первой загрузки
+  const [guestReadOnly, setGuestReadOnly] = useState(false);
 
   // Загрузка данных с сервера при старте
   useEffect(() => {
@@ -134,10 +139,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(interval);
   }, []);
 
-  // Автосохранение на сервер при изменении состояния (с debounce)
+  // Автосохранение на сервер при изменении состояния (с debounce).
+  // ВАЖНО: в режиме «только просмотр» (guestReadOnly) на сервер не пишем вообще —
+  // гость может только смотреть данные, блокировку он не создаёт и не трогает.
   useEffect(() => {
     if (isLoading || !hasLoaded) return; // Не сохраняем при первой загрузке
-    
+    if (guestReadOnly) return;
+
     // Очищаем предыдущий таймер
     if (syncTimeout) {
       clearTimeout(syncTimeout);
@@ -205,6 +213,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Функция для принудительной синхронизации
   const syncToServer = async (): Promise<boolean> => {
     try {
+      if (guestReadOnly) return false;
       const currentUser = getCurrentUser();
       // Без авторизации на сервер не пишем: анонимный клиент не должен
       // иметь возможности создать/перезаписать блокировку.
@@ -237,7 +246,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       isLocked,
       lockInfo,
       isLoading,
-      error
+      error,
+      guestReadOnly,
+      setGuestReadOnly
     }}>
       {children}
     </StoreContext.Provider>

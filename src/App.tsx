@@ -28,7 +28,7 @@ const VERSION = '2.0';
 const COMPANY_NAME = "АО «Логистик-Центр»";
 
 function AppContent() {
-  const { state, dispatch, isLocked, lockInfo, isLoading, error } = useStore();
+  const { state, dispatch, isLocked, lockInfo, isLoading, error, setGuestReadOnly } = useStore();
   const toast = useToast();
   const [activeTab, setActiveTab] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -40,9 +40,16 @@ function AppContent() {
   });
   const [isAuthChecked, setIsAuthChecked] = useState(false);
   const [isAuthenticatedUser, setIsAuthenticatedUser] = useState(false);
-  const [readOnly, setReadOnly] = useState(false);
+  const [readOnly, setReadOnlyState] = useState(false);
   const [showInactivityWarning, setShowInactivityWarning] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Единая точка переключения режима «только просмотр»: синхронизируем
+  // локальный флаг и флаг в сторе (стор по нему отключает автосейв на сервер).
+  const setReadOnly = (value: boolean) => {
+    setReadOnlyState(value);
+    setGuestReadOnly(value);
+  };
 
   // Проверка авторизации и блокировки при загрузке.
   // Алгоритм: читаем lock.json ДО показа основного экрана. Если там указан

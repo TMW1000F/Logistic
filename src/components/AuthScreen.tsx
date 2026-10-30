@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { login, register } from '../api';
+import { whoami } from '../api';
 import { useToast } from './Toast';
 
 interface Props {
@@ -8,46 +8,33 @@ interface Props {
   darkMode: boolean;
 }
 
+// Экран входа. Регистрации и паролей нет: в корпоративной сети браузер
+// автоматически передаёт учётные данные Windows (Kerberos/NTLM) через
+// reverse-proxy, а сервер сверяет AD-логин со списком разрешённых (users.json).
+// «Вход для редактирования» — одна кнопка, ничего вводить не нужно.
+// «Только просмотр» — пускает кого угодно, без блокировок и редактирования.
 export default function AuthScreen({ onAuthSuccess, onReadOnlyMode, darkMode }: Props) {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [displayName, setDisplayName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [adError, setAdError] = useState<string | null>(null);
   const toast = useToast();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!username.trim() || !password.trim()) {
-      toast.warning('Заполните все поля');
-      return;
-    }
-    
+  const handleEditLogin = async () => {
     setIsLoading(true);
-    
+    setAdError(null);
+
     try {
-      let result;
-      
-      if (mode === 'login') {
-        result = await login(username, password);
-      } else {
-        if (!displayName.trim()) {
-          toast.warning('Укажите отображаемое имя');
-          setIsLoading(false);
-          return;
-        }
-        result = await register(username, password, displayName);
-      }
-      
+      const result = await whoami();
+
       if (result.success) {
-        toast.success(mode === 'login' ? 'Вход выполнен' : 'Регистрация успешна');
+        toast.success(`Добро пожаловать, ${result.user?.displayName || ''}!`);
         onAuthSuccess();
       } else {
-        toast.error(result.error || 'Ошибка авторизации');
+        // Отказ сервера (нет в allow-list / отключён / нет групп) или прокси
+        // не передал данные AD — показываем причину, остаёмся на экране входа.
+        setAdError(result.error || 'Вход по Active Directory не выполнен');
       }
     } catch (error) {
-      toast.error('Ошибка соединения с сервером');
+      setAdError('Ошибка соединения с сервером');
     } finally {
       setIsLoading(false);
     }
@@ -71,107 +58,38 @@ export default function AuthScreen({ onAuthSuccess, onReadOnlyMode, darkMode }: 
           </p>
         </div>
 
-        {/* Переключатель режима */}
-        <div className="flex mb-6 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
-          <button
-            type="button"
-            onClick={() => setMode('login')}
-            className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all ${
-              mode === 'login'
-                ? darkMode ? 'bg-gray-600 text-white shadow' : 'bg-white text-gray-900 shadow'
-                : darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Вход
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('register')}
-            className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all ${
-              mode === 'register'
-                ? darkMode ? 'bg-gray-600 text-white shadow' : 'bg-white text-gray-900 shadow'
-                : darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Регистрация
-          </button>
-        </div>
-
-        {/* Форма */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              Имя пользователя
-            </label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className={`w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                darkMode 
-                  ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                  : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-              }`}
-              placeholder="ivanov"
-              disabled={isLoading}
-            />
-          </div>
-
-          <div>
-            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              Пароль
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className={`w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                darkMode 
-                  ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                  : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-              }`}
-              placeholder="••••••••"
-              disabled={isLoading}
-            />
-          </div>
-
-          {mode === 'register' && (
-            <div>
-              <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                Отображаемое имя
-              </label>
-              <input
-                type="text"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                className={`w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  darkMode 
-                    ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                    : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-                }`}
-                placeholder="Иванов И.И."
-                disabled={isLoading}
-              />
-              <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                Это имя будут видеть другие пользователи
-              </p>
-            </div>
+        {/* Вход для редактирования по Active Directory */}
+        <button
+          type="button"
+          onClick={handleEditLogin}
+          disabled={isLoading}
+          className={`w-full py-3 px-4 rounded-lg font-medium text-white transition-all flex items-center justify-center gap-2 ${
+            isLoading
+              ? 'bg-gray-400 cursor-not-allowed'
+              : 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800'
+          }`}
+        >
+          {isLoading ? (
+            <>
+              <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
+              Проверка Active Directory...
+            </>
+          ) : (
+            <>✏️ Вход для редактирования</>
           )}
+        </button>
+        <p className={`text-xs text-center mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+          Автоматически по учётной записи Windows (Active Directory). Логин и пароль вводить не нужно.
+        </p>
 
-          <button
-            type="submit"
-            disabled={isLoading}
-            className={`w-full py-2 px-4 rounded-lg font-medium text-white transition-all ${
-              isLoading
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800'
-            }`}
-          >
-            {isLoading ? 'Загрузка...' : mode === 'login' ? 'Войти' : 'Зарегистрироваться'}
-          </button>
-        </form>
+        {/* Причина отказа доступа */}
+        {adError && (
+          <div className={`mt-4 rounded-lg p-3 text-sm ${darkMode ? 'bg-red-900/40 text-red-200' : 'bg-red-50 text-red-700'}`}>
+            🔒 {adError}
+          </div>
+        )}
 
-        {/* Кнопка режима только просмотра */}
+        {/* Режим только просмотра — доступен всем */}
         <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
           <button
             type="button"
@@ -185,7 +103,7 @@ export default function AuthScreen({ onAuthSuccess, onReadOnlyMode, darkMode }: 
             🔍 Только просмотр
           </button>
           <p className={`text-xs text-center mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-            Просмотр данных без возможности редактирования
+            Просмотр данных без возможности редактирования и без блокировки файла. Доступен всем.
           </p>
         </div>
       </div>

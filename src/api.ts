@@ -16,21 +16,12 @@ interface UserInfo {
   displayName: string;
 }
 
-interface AuthResponse {
-  success: boolean;
+interface WhoAmIResponse {
+  success?: boolean;
   token?: string;
   user?: UserInfo;
   error?: string;
-}
-
-// Генерация уникального ID пользователя (на основе браузера)
-function generateUserId(): string {
-  const stored = localStorage.getItem('userId');
-  if (stored) return stored;
-  
-  const id = 'user_' + Math.random().toString(36).substr(2, 9);
-  localStorage.setItem('userId', id);
-  return id;
+  adLogin?: string;
 }
 
 // Получение имени компьютера (автоматически, по ОС)
@@ -47,12 +38,11 @@ export function getComputerName(): string {
   return 'Неизвестный';
 }
 
-export const userId = generateUserId();
 export let computerName = getComputerName();
 
 // ==================== Авторизация ====================
 
-// Получить текущего пользователя из localStorage
+// Текущий пользователь из localStorage (сохраняется после успешного whoami)
 export function getCurrentUser(): UserInfo | null {
   const token = localStorage.getItem('authToken');
   const userStr = localStorage.getItem('currentUser');
@@ -66,65 +56,37 @@ export function getCurrentUser(): UserInfo | null {
   return null;
 }
 
-// Проверить, авторизован ли пользователь
 export function isAuthenticated(): boolean {
   return !!localStorage.getItem('authToken');
 }
 
-// Регистрация
-export async function register(username: string, password: string, displayName: string): Promise<AuthResponse> {
+// Интегрированная аутентификация Active Directory.
+// Браузер в корпоративной сети автоматически прикладывает Windows-аутентификацию
+// (Kerberos/NTLM), reverse-proxy передаёт логин на сервер, и сервер решает,
+// пускать ли этого человека на редактирование (allow-list в users.json).
+// Ничего вводить не нужно — просто нажимаем «Вход для редактирования».
+export async function whoami(): Promise<WhoAmIResponse> {
   try {
-    const response = await fetch(`${API_BASE}/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, displayName })
-    });
-    
-    const result = await response.json();
-    
-    if (result.success && result.token && result.user) {
+    const response = await fetch(`${API_BASE}/auth/whoami`);
+    const result: WhoAmIResponse = await response.json().catch(() => ({}));
+
+    if (response.ok && result.success && result.token && result.user) {
       localStorage.setItem('authToken', result.token);
       localStorage.setItem('currentUser', JSON.stringify(result.user));
-      // Очищаем старый userId из localStorage
-      localStorage.removeItem('userId');
+      return result;
     }
-    
-    return result;
+
+    return { success: false, error: result.error || 'Вход по Active Directory не выполнен' };
   } catch (error) {
-    console.error('Ошибка register:', error);
+    console.error('Ошибка whoami:', error);
     return { success: false, error: 'Ошибка соединения с сервером' };
   }
 }
 
-// Вход
-export async function login(username: string, password: string): Promise<AuthResponse> {
-  try {
-    const response = await fetch(`${API_BASE}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
-    });
-    
-    const result = await response.json();
-    
-    if (result.success && result.token && result.user) {
-      localStorage.setItem('authToken', result.token);
-      localStorage.setItem('currentUser', JSON.stringify(result.user));
-      // Очищаем старый userId из localStorage
-      localStorage.removeItem('userId');
-    }
-    
-    return result;
-  } catch (error) {
-    console.error('Ошибка login:', error);
-    return { success: false, error: 'Ошибка соединения с сервером' };
-  }
-}
-
-// Выход
+// Выход — освобождение блокировки и очистка локальных данных о пользователе
 export async function logout(): Promise<void> {
   const token = localStorage.getItem('authToken');
-  
+
   try {
     if (token) {
       await fetch(`${API_BASE}/auth/logout`, {
@@ -136,21 +98,21 @@ export async function logout(): Promise<void> {
   } catch (error) {
     console.error('Ошибка logout:', error);
   }
-  
+
   localStorage.removeItem('authToken');
   localStorage.removeItem('currentUser');
 }
 
-// Проверка токена
+// Проверка токена (при перезагрузке страницы сверяемся с сервером)
 export async function verifyToken(): Promise<UserInfo | null> {
   const token = localStorage.getItem('authToken');
-  
+
   if (!token) return null;
-  
+
   try {
     const response = await fetch(`${API_BASE}/auth/verify?token=${token}`);
     const result = await response.json();
-    
+
     if (result.valid && result.user) {
       localStorage.setItem('currentUser', JSON.stringify(result.user));
       return result.user;
@@ -161,6 +123,8 @@ export async function verifyToken(): Promise<UserInfo | null> {
     }
   } catch (error) {
     console.error('Ошибка verifyToken:', error);
+    // Сервер недоступен — не разлогиниваем пользователя агрессивно,
+    // но и новые блокировки создавать не даём: считаем сессию недействительной.
     return null;
   }
 }
@@ -214,7 +178,7 @@ export async function updateData(data: AppState, userIdParam?: string, computerN
         ...authHeaders()
       },
       body: JSON.stringify({ 
-        userId: userIdParam || currentUser?.id || userId, 
+        userId: userIdParam || currentUser?.id || '', 
         computerName: computerNameParam || currentUser?.displayName || getComputerName(), 
         data 
       })
