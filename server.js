@@ -290,6 +290,49 @@ const AD_USER_HEADER = (process.env.AD_USER_HEADER || 'x-forwarded-user').toLowe
 const AD_DISPLAY_NAME_HEADER = (process.env.AD_DISPLAY_NAME_HEADER || 'x-forwarded-name').toLowerCase();
 const AD_GROUPS_HEADER = (process.env.AD_GROUPS_HEADER || 'x-forwarded-groups').toLowerCase();
 
+// Отладочный вывод для диагностики проблем с AD-аутентификацией.
+// Включается переменной окружения DEBUG_AD=1 (например: DEBUG_AD=1 node server.js).
+// Логирует все входящие заголовки запроса whoami и содержимое allow-list,
+// а также добавляет эти данные в ответ 401/403, чтобы причину отказа
+// было видно прямо в браузере, не залезая на сервер.
+const DEBUG_AD = process.env.DEBUG_AD === '1' || process.env.DEBUG_AD === 'true';
+
+function maskHeaderValue(name, value) {
+  // Маскируем чувствительные заголовки даже в отладочном режиме
+  const sensitive = ['authorization', 'cookie', 'password', 'token'];
+  if (sensitive.some(s => name.toLowerCase().includes(s))) return '[скрыто]';
+  return value;
+}
+
+function logAdHeaders(req, context) {
+  if (!DEBUG_AD) return;
+  console.log(`\n🔎 [DEBUG_AD] ${context}`);
+  console.log('   Заголовок пользователя AD:', AD_USER_HEADER, '=', req.headers[AD_USER_HEADER] ?? '(нет)');
+  console.log('   Заголовок отображаемого имени:', AD_DISPLAY_NAME_HEADER, '=', req.headers[AD_DISPLAY_NAME_HEADER] ?? '(нет)');
+  console.log('   Заголовок групп AD:', AD_GROUPS_HEADER, '=', req.headers[AD_GROUPS_HEADER] ?? '(нет)');
+  console.log('   Все заголовки запроса:');
+  for (const [name, value] of Object.entries(req.headers)) {
+    console.log(`     - ${name}: ${maskHeaderValue(name, String(value))}`);
+  }
+  console.log('   🔧 Подсказка: имя заголовка можно поменять через переменную окружения AD_USER_HEADER');
+  console.log('      (частые варианты: x-remote-user, remote_user, x-forwarded-user, authorization-user)');
+}
+
+// Для ответов об ошибке: какие заголовки прокси реально передал (без значений секретов)
+function buildAdDebugInfo(req, users) {
+  if (!DEBUG_AD) return undefined;
+  return {
+    checkedHeader: AD_USER_HEADER,
+    headerValue: req.headers[AD_USER_HEADER] ?? null,
+    presentAuthHeaders: Object.keys(req.headers).filter(n =>
+      /user|auth|remote|login|kerberos|ntlm|forwarded/i.test(n)
+    ),
+    allHeaderNames: Object.keys(req.headers),
+    allowedUsernames: Array.isArray(users) ? users.map(u => u.username) : [],
+    hint: 'Если headerValue=null — прокси не передаёт заголовок AD. Проверьте настройки Windows-аутентификации на прокси и задайте AD_USER_HEADER именем того заголовка, который он реально шлёт (см. presentAuthHeaders).'
+  };
+}
+
 function normalizeAdUsername(raw) {
   if (!raw) return null;
   let name = String(raw).trim();
@@ -326,12 +369,15 @@ function parseAdGroups(headerValue) {
 // (через reverse-proxy), пользователю не нужно ничего вводить.
 app.get('/api/auth/whoami', async (req, res) => {
   console.log('🪪 GET /api/auth/whoami');
+  logAdHeaders(req, 'whoami: входящие данные от прокси');
 
   const adLoginRaw = req.headers[AD_USER_HEADER];
   if (!adLoginRaw) {
     console.log('🚫 whoami: нет заголовка', AD_USER_HEADER, '- прокси не передал данные AD');
+    const debugInfo = buildAdDebugInfo(req, []);
     return res.status(401).json({
-      error: 'Не удалось определить пользователя из Active Directory. Проверьте, что сайт открыт через корпоративный прокси с Windows-аутентификацией.'
+      error: 'Не удалось определить пользователя из Active Directory. Проверьте, что сайт открыт через корпоративный прокси с Windows-аутентификацией.',
+      ...(debugInfo ? { debug: debugInfo } : {})
     });
   }
 
@@ -341,9 +387,15 @@ app.get('/api/auth/whoami', async (req, res) => {
 
   if (!user) {
     console.log(`🚫 whoami: пользователь ${adLogin} отсутствует в allow-list (users.json)`);
+    if (DEBUG_AD) {
+      console.log('   Разрешённые логины в users.json:', users.map(u => u.username).join(', ') || '(список пуст)');
+      console.log('   Искомый логин после нормализации:', adLogin, '(из', String(adLoginRaw) + ')');
+    }
+    const debugInfo = buildAdDebugInfo(req, users);
     return res.status(403).json({
       error: 'Доступ к редактированию запрещён. Вас нет в списке разрешённых пользователей — обратитесь к администратору.',
-      adLogin
+      adLogin,
+      ...(debugInfo ? { debug: debugInfo } : {})
     });
   }
 
@@ -362,9 +414,13 @@ app.get('/api/auth/whoami', async (req, res) => {
     const hasGroup = required.some(g => groups.includes(g));
     if (!hasGroup) {
       console.log(`🚫 whoami: у ${adLogin} нет ни одной требуемой группы (${required.join(', ')})`);
+      if (DEBUG_AD) {
+        console.log('   Группы, переданные прокси:', groups.length ? groups.join(', ') : '(заголовок групп не передан или пуст)');
+      }
       return res.status(403).json({
         error: `Доступ разрешён только участникам групп: ${user.adGroups.join(', ')}.`,
-        adLogin
+        adLogin,
+        ...(DEBUG_AD ? { debug: { headerGroups: req.headers[AD_GROUPS_HEADER] ?? null, parsedGroups: groups, requiredGroups: required } } : {})
       });
     }
   }
@@ -584,6 +640,9 @@ Promise.all([initDataFile(), initUsersFile()]).then(() => {
     console.log(`📊 API доступен на http://localhost:${PORT}/api`);
     console.log(`💾 Данные хранятся в: ${DATA_FILE}`);
     console.log(`👥 Пользователи хранятся в: ${USERS_FILE}\n`);
+    console.log(`🪪 AD-логин читается из заголовка: ${AD_USER_HEADER} (переменная окружения AD_USER_HEADER)`);
+    console.log(`   Отображаемое имя: ${AD_DISPLAY_NAME_HEADER}, группы: ${AD_GROUPS_HEADER}`);
+    console.log(`   Отладочный вывод заголовков AD: ${DEBUG_AD ? '✅ ВКЛЮЧЁН (DEBUG_AD)' : 'выключен (включите: DEBUG_AD=1 node server.js)'}`);
   });
 }).catch(error => {
   console.error('❌ Ошибка инициализации:', error);

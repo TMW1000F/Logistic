@@ -84,7 +84,7 @@ export default function AuthScreen({ onAuthSuccess, onReadOnlyMode, darkMode }: 
 
         {/* Причина отказа доступа */}
         {adError && (
-          <div className={`mt-4 rounded-lg p-3 text-sm ${darkMode ? 'bg-red-900/40 text-red-200' : 'bg-red-50 text-red-700'}`}>
+          <div className={`mt-4 rounded-lg p-3 text-sm whitespace-pre-line ${darkMode ? 'bg-red-900/40 text-red-200' : 'bg-red-50 text-red-700'}`}>
             🔒 {adError}
           </div>
         )}

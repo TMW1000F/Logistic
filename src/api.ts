@@ -16,12 +16,25 @@ interface UserInfo {
   displayName: string;
 }
 
+interface WhoAmIDebugInfo {
+  checkedHeader?: string;
+  headerValue?: string | null;
+  presentAuthHeaders?: string[];
+  allHeaderNames?: string[];
+  allowedUsernames?: string[];
+  hint?: string;
+  headerGroups?: string | null;
+  parsedGroups?: string[];
+  requiredGroups?: string[];
+}
+
 interface WhoAmIResponse {
   success?: boolean;
   token?: string;
   user?: UserInfo;
   error?: string;
   adLogin?: string;
+  debug?: WhoAmIDebugInfo;
 }
 
 // Получение имени компьютера (автоматически, по ОС)
@@ -76,7 +89,33 @@ export async function whoami(): Promise<WhoAmIResponse> {
       return result;
     }
 
-    return { success: false, error: result.error || 'Вход по Active Directory не выполнен' };
+    // Отладочная информация от сервера (видна, если сервер запущен с DEBUG_AD=1)
+    if (result.debug) {
+      console.warn('🔎 [DEBUG_AD] Диагностика входа по Active Directory:', result.debug);
+    }
+
+    let error = result.error || 'Вход по Active Directory не выполнен';
+    if (result.debug) {
+      const d = result.debug;
+      const parts: string[] = [];
+      if (d.checkedHeader) {
+        parts.push(`Искомый заголовок: ${d.checkedHeader} = ${d.headerValue ?? '(нет)'}`);
+      }
+      if (d.presentAuthHeaders && d.presentAuthHeaders.length > 0) {
+        parts.push(`Похожие заголовки от прокси: ${d.presentAuthHeaders.join(', ')}`);
+      } else if (d.allHeaderNames) {
+        parts.push('Прокси не передал ни одного похожего на AD-логин заголовка');
+      }
+      if (d.allowedUsernames && d.allowedUsernames.length > 0 && d.headerValue) {
+        parts.push(`Разрешённые логины: ${d.allowedUsernames.join(', ')}`);
+      }
+      if (d.parsedGroups !== undefined) {
+        parts.push(`Группы из заголовка: ${d.parsedGroups.length ? d.parsedGroups.join(', ') : '(нет)'}; требуются: ${(d.requiredGroups || []).join(', ')}`);
+      }
+      error += `\n\n🔎 Отладка:\n${parts.map(p => `• ${p}`).join('\n')}\n\n${d.hint || ''}`.trim();
+    }
+
+    return { success: false, error, debug: result.debug };
   } catch (error) {
     console.error('Ошибка whoami:', error);
     return { success: false, error: 'Ошибка соединения с сервером' };
