@@ -13,6 +13,7 @@ const initialState: AppState = {
 type Action =
   | { type: 'LOAD_STATE'; payload: AppState }
   | { type: 'ADD_AUTO_RECORD'; payload: CarRecord }
+  | { type: 'UPDATE_AUTO_RECORD'; payload: CarRecord }
   | { type: 'DELETE_AUTO_RECORD'; payload: string }
   | { type: 'ADD_SERVICE_RECORD'; payload: ServiceRecord }
   | { type: 'DELETE_SERVICE_RECORD'; payload: string }
@@ -28,6 +29,11 @@ function reducer(state: AppState, action: Action): AppState {
       return action.payload;
     case 'ADD_AUTO_RECORD':
       return { ...state, autoRecords: [...state.autoRecords, action.payload] };
+    case 'UPDATE_AUTO_RECORD':
+      return {
+        ...state,
+        autoRecords: state.autoRecords.map(r => (r.id === action.payload.id ? action.payload : r)),
+      };
     case 'DELETE_AUTO_RECORD':
       return { ...state, autoRecords: state.autoRecords.filter(r => r.id !== action.payload) };
     case 'ADD_SERVICE_RECORD':

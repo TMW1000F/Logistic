@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react';
 import { useStore } from '../store';
 import { useToast } from './Toast';
-import { CarRecord, calcDurationHours, calcAutoCost, formatNumber, formatDate, generateId } from '../types';
-import { Plus, Trash2, CheckSquare, Square } from 'lucide-react';
+import { CarRecord, calcDurationHours, calcAutoCost, formatNumber, formatDate, generateId, isValidPlate, formatPlate } from '../types';
+import { Plus, Trash2, CheckSquare, Square, Pencil, X } from 'lucide-react';
 import SearchAndTags, { FilterTag } from './SearchAndTags';
 
 interface Props {
@@ -11,19 +11,29 @@ interface Props {
   readOnly?: boolean;
 }
 
+// Пустая форма
+const emptyForm = () => ({
+  car_number: '',
+  car_type: '',
+  carrier: '',
+  arrival: '08:00',
+  departure: '17:00',
+  date: new Date().toISOString().split('T')[0],
+  coefficient: '1.5',
+  useCoefficient: false,
+});
+
 export default function AutoTab({ onStatus, darkMode = false, readOnly = false }: Props) {
   const { state, dispatch } = useStore();
   const toast = useToast();
 
-  // Форма ввода
-  const [carNumber, setCarNumber] = useState('');
-  const [carType, setCarType] = useState('');
-  const [carrier, setCarrier] = useState('');
-  const [arrival, setArrival] = useState('08:00');
-  const [departure, setDeparture] = useState('17:00');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [useCoefficient, setUseCoefficient] = useState(false);
-  const [coefficient, setCoefficient] = useState('1.5');
+  // Форма ввода (добавление / редактирование)
+  const [form, setForm] = useState(emptyForm());
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const setField = <K extends keyof ReturnType<typeof emptyForm>>(key: K, value: ReturnType<typeof emptyForm>[K]) => {
+    setForm(prev => ({ ...prev, [key]: value }));
+  };
 
   // Поиск и теги-фильтры
   const [searchQuery, setSearchQuery] = useState('');
@@ -178,42 +188,98 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
     return { count: filteredRecords.length, totalHours, totalCost };
   }, [filteredRecords]);
 
-  // Сохранение
+  // Сохранение (добавление или обновление при редактировании)
+  const resetForm = () => {
+    setForm(emptyForm());
+    setEditingId(null);
+  };
+
   const handleSave = () => {
-    if (!carNumber.trim() || !carType || !carrier) {
-      toast.warning('Заполните обязательные поля: номер ТС, тип ТС, перевозчик');
+    const plateRaw = form.car_number.trim();
+
+    if (!plateRaw || !form.car_type || !form.carrier) {
+      toast.warning('Заполните обязательные поля: госномер, тип ТС, перевозчик');
       return;
     }
 
-    const tariff = getTariff(carType, carrier);
+    // Валидация госномера: А 123 АА 123 или 1234 АА 123
+    if (!isValidPlate(plateRaw)) {
+      toast.error('Неверный формат госномера. Допустимы: «А 123 АА 123» или «1234 АА 123» (буквы — кириллица А, В, Е, К, М, Н, О, Р, С, Т, У, Х)');
+      return;
+    }
+    const carNumber = formatPlate(plateRaw);
+
+    const tariff = getTariff(form.car_type, form.carrier);
     if (tariff === null) {
-      toast.error(`Тариф для "${carType}" и "${carrier}" не найден. Добавьте тариф во вкладке "Тарифы".`);
+      toast.error(`Тариф для "${form.car_type}" и "${form.carrier}" не найден. Добавьте тариф во вкладке "Тарифы".`);
       return;
     }
 
-    const coef = useCoefficient ? parseFloat(coefficient.replace(',', '.')) : 1.0;
+    const coef = form.useCoefficient ? parseFloat(form.coefficient.replace(',', '.')) : 1.0;
     if (isNaN(coef) || coef <= 0) {
       toast.error('Некорректный коэффициент');
       return;
     }
 
+    if (editingId) {
+      // Обновление существующей записи
+      const updated: CarRecord = {
+        id: editingId,
+        car_number: carNumber,
+        car_type: form.car_type,
+        carrier: form.carrier,
+        arrival: form.arrival,
+        departure: form.departure,
+        date: form.date,
+        tariff,
+        coefficient: coef,
+      };
+      dispatch({ type: 'UPDATE_AUTO_RECORD', payload: updated });
+      toast.success(`Автомобиль ${updated.car_number} обновлён`);
+      onStatus?.(`✏️ Автомобиль ${updated.car_number} обновлён`);
+      resetForm();
+      return;
+    }
+
     const record: CarRecord = {
       id: generateId(),
-      car_number: carNumber.trim(),
-      car_type: carType,
-      carrier: carrier,
-      arrival,
-      departure,
-      date,
+      car_number: carNumber,
+      car_type: form.car_type,
+      carrier: form.carrier,
+      arrival: form.arrival,
+      departure: form.departure,
+      date: form.date,
       tariff,
       coefficient: coef,
     };
 
     dispatch({ type: 'ADD_AUTO_RECORD', payload: record });
-    setCarNumber('');
-    setUseCoefficient(false);
+    setForm(prev => ({ ...prev, car_number: '' }));
     toast.success(`Автомобиль ${record.car_number} добавлен`);
     onStatus?.(`✅ Автомобиль ${record.car_number} добавлен`);
+  };
+
+  // Начало редактирования записи
+  const startEdit = (id: string) => {
+    const rec = state.autoRecords.find(r => r.id === id);
+    if (!rec) return;
+    setEditingId(id);
+    setForm({
+      car_number: rec.car_number,
+      car_type: rec.car_type,
+      carrier: rec.carrier,
+      arrival: rec.arrival,
+      departure: rec.departure,
+      date: rec.date,
+      coefficient: String(rec.coefficient),
+      useCoefficient: rec.coefficient !== 1.0,
+    });
+    // Прокрутить форму в вид? — оставим как есть, кнопка станет «Сохранить»
+  };
+
+  const cancelEdit = () => {
+    resetForm();
+    toast.info('Редактирование отменено');
   };
 
   // Удаление одной записи
@@ -271,25 +337,31 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
     <div className="flex flex-col h-full">
       {/* Sticky форма ввода */}
       {!readOnly && (
-      <div className={`flex-shrink-0 rounded-lg p-3 mb-2 ${darkMode ? 'bg-gray-800' : 'bg-white border border-gray-200'}`}>
+      <div className={`flex-shrink-0 rounded-lg p-3 mb-2 ${darkMode ? 'bg-gray-800' : 'bg-white border border-gray-200'} ${editingId ? (darkMode ? 'ring-2 ring-amber-500' : 'ring-2 ring-amber-400') : ''}`}>
+        {editingId && (
+          <div className={`mb-2 text-sm font-medium ${darkMode ? 'text-amber-400' : 'text-amber-700'}`}>
+            ✏️ Режим редактирования записи — измените поля и нажмите «Сохранить»
+          </div>
+        )}
         {/* Строка 1: Номер ТС, Тип ТС, Перевозчик, Дата */}
         <div className="grid grid-cols-4 gap-2 mb-2">
           <div>
-            <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Номер ТС:</label>
+            <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Госномер ТС: *</label>
             <input
               type="text"
-              value={carNumber}
-              onChange={e => setCarNumber(e.target.value)}
+              value={form.car_number}
+              onChange={e => setField('car_number', e.target.value)}
               onKeyDown={handleKeyDown}
-              className={`w-full border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
-              placeholder="А123БВ777"
+              className={`w-full border rounded px-2 py-1 text-sm uppercase ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+              placeholder="А 123 АА 123 или 1234 АА 123"
+              title="Формат: А 123 АА 123 или 1234 АА 123 (кириллица)"
             />
           </div>
           <div>
-            <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Тип ТС:</label>
+            <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Тип ТС: *</label>
             <select
-              value={carType}
-              onChange={e => setCarType(e.target.value)}
+              value={form.car_type}
+              onChange={e => setField('car_type', e.target.value)}
               className={`w-full border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
             >
               <option value="">-- Выберите --</option>
@@ -297,10 +369,10 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
             </select>
           </div>
           <div>
-            <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Перевозчик:</label>
+            <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Перевозчик: *</label>
             <select
-              value={carrier}
-              onChange={e => setCarrier(e.target.value)}
+              value={form.carrier}
+              onChange={e => setField('carrier', e.target.value)}
               className={`w-full border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
             >
               <option value="">-- Выберите --</option>
@@ -311,8 +383,8 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
             <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Дата:</label>
             <input
               type="date"
-              value={date}
-              onChange={e => setDate(e.target.value)}
+              value={form.date}
+              onChange={e => setField('date', e.target.value)}
               className={`w-full border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
             />
           </div>
@@ -324,8 +396,8 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
             <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Прибытие:</label>
             <input
               type="time"
-              value={arrival}
-              onChange={e => setArrival(e.target.value)}
+              value={form.arrival}
+              onChange={e => setField('arrival', e.target.value)}
               step="1800"
               className={`border rounded px-2 py-1 text-sm w-28 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
             />
@@ -334,8 +406,8 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
             <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Убытие:</label>
             <input
               type="time"
-              value={departure}
-              onChange={e => setDeparture(e.target.value)}
+              value={form.departure}
+              onChange={e => setField('departure', e.target.value)}
               step="1800"
               className={`border rounded px-2 py-1 text-sm w-28 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
             />
@@ -343,16 +415,16 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
           <div className="flex items-center gap-1">
             <input
               type="checkbox"
-              checked={useCoefficient}
-              onChange={e => setUseCoefficient(e.target.checked)}
+              checked={form.useCoefficient}
+              onChange={e => setField('useCoefficient', e.target.checked)}
               id="auto_coef"
             />
             <label htmlFor="auto_coef" className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Коэф.:</label>
             <input
               type="text"
-              value={coefficient}
-              onChange={e => setCoefficient(e.target.value)}
-              disabled={!useCoefficient}
+              value={form.coefficient}
+              onChange={e => setField('coefficient', e.target.value)}
+              disabled={!form.useCoefficient}
               className={`w-14 border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
             />
           </div>
@@ -380,9 +452,9 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
               className={`border rounded px-1 py-1 text-xs w-32 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
             />
           </div>
-          {carType && carrier && (
+          {form.car_type && form.carrier && (
             <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-              Тариф: {getTariff(carType, carrier) !== null ? `${formatNumber(getTariff(carType, carrier)!)} ₽/ч` : '⚠️ Не найден'}
+              Тариф: {getTariff(form.car_type, form.carrier) !== null ? `${formatNumber(getTariff(form.car_type, form.carrier)!)} ₽/ч` : '⚠️ Не найден'}
             </span>
           )}
           {selectedIds.size > 0 && (
@@ -393,11 +465,20 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
               <Trash2 size={14} /> Удалить ({selectedIds.size})
             </button>
           )}
+          {editingId && (
+            <button
+              onClick={cancelEdit}
+              className="flex items-center gap-1 bg-gray-500 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-600"
+            >
+              <X size={14} /> Отмена
+            </button>
+          )}
           <button
             onClick={handleSave}
-            className="ml-auto flex items-center gap-1 bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700"
+            className={`ml-auto flex items-center gap-1 text-white px-3 py-1.5 rounded text-sm ${editingId ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'}`}
           >
-            <Plus size={14} /> Добавить
+            {editingId ? <CheckSquare size={14} /> : <Plus size={14} />}
+            {editingId ? 'Сохранить изменения' : 'Добавить'}
           </button>
         </div>
       </div>
@@ -498,9 +579,18 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
                   <td className="px-2 py-1.5 text-center">{row.has_high_tariff ? `×${row.coefficient}` : '-'}</td>
                   <td className="px-2 py-1.5 text-center">
                     {!row.is_group && !readOnly && (
-                      <button onClick={() => handleDelete(row.id)} className="text-red-500 hover:text-red-700">
-                        <Trash2 size={14} />
-                      </button>
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          onClick={() => startEdit(row.id)}
+                          title="Редактировать"
+                          className={`hover:text-blue-700 ${editingId === row.id ? 'text-amber-600' : (darkMode ? 'text-blue-400' : 'text-blue-500')}`}
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button onClick={() => handleDelete(row.id)} title="Удалить" className="text-red-500 hover:text-red-700">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>

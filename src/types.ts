@@ -40,6 +40,49 @@ export interface AppState {
   tariffs: Tariff[];
 }
 
+// ==================== Валидация госномера ====================
+// Допустимые форматы (РФ):
+//   1) буква + 3 цифры + 2 буквы + код региона 1-3 цифры:  А 123 АА 123
+//   2) 4 цифры + 2 буквы + код региона 1-3 цифры:          1234 АА 123
+// Буквы — только кириллица (наборы букв российских номеров).
+// Разделители (пробелы/дефисы) необязательны: «А123АА123» тоже принимается.
+
+const PLATE_LETTERS = 'АВЕКМНОРСТУХ'; // кириллические буквы, используемые в номерах РФ
+
+const PLATE_PATTERN_MAIN = new RegExp(
+  `^[${PLATE_LETTERS}][0-9]{3}[${PLATE_LETTERS}]{2}[0-9]{2,3}$`
+);
+const PLATE_PATTERN_LEGACY = new RegExp(
+  `^[0-9]{4}[${PLATE_LETTERS}]{2}[0-9]{2,3}$`
+);
+
+// Нормализация: убрать пробелы/дефисы, перевести латиницу-омографы в кириллицу, верхний регистр
+export function normalizePlate(input: string): string {
+  const map: Record<string, string> = {
+    A: 'А', B: 'В', C: 'С', E: 'Е', H: 'Н', K: 'К', M: 'М',
+    N: 'Н', P: 'Р', T: 'Т', X: 'Х', Y: 'У',
+  };
+  return input
+    .toUpperCase()
+    .replace(/[\s\-–—]/g, '')
+    .replace(/[A-Z]/g, (ch) => map[ch] ?? ch);
+}
+
+export function isValidPlate(input: string): boolean {
+  const n = normalizePlate(input);
+  return PLATE_PATTERN_MAIN.test(n) || PLATE_PATTERN_LEGACY.test(n);
+}
+
+// Красивое представление: «А 123 АА 123» / «1234 АА 123»
+export function formatPlate(input: string): string {
+  const n = normalizePlate(input);
+  const m1 = n.match(new RegExp(`^([${PLATE_LETTERS}])([0-9]{3})([${PLATE_LETTERS}]{2})([0-9]{2,3})$`));
+  if (m1) return `${m1[1]} ${m1[2]} ${m1[3]} ${m1[4]}`;
+  const m2 = n.match(new RegExp(`^([0-9]{4})([${PLATE_LETTERS}]{2})([0-9]{2,3})$`));
+  if (m2) return `${m2[1]} ${m2[2]} ${m2[3]}`;
+  return n;
+}
+
 // ==================== Утилиты расчёта ====================
 
 export function calcDurationHours(arrival: string, departure: string): number {
