@@ -371,12 +371,38 @@ app.get('/api/auth/whoami', async (req, res) => {
   console.log('🪪 GET /api/auth/whoami');
   logAdHeaders(req, 'whoami: входящие данные от прокси');
 
-  const adLoginRaw = req.headers[AD_USER_HEADER];
+  // Кандидаты: основной заголовок + частые варианты, которые шлют разные прокси
+  // (IIS ARR, Apache mod_auth, nginx auth_request и т.п.). Первый непустой — тот и используем.
+  const HEADER_CANDIDATES = [
+    AD_USER_HEADER,
+    'x-remote-user', 'remote_user', 'remote-user',
+    'logon_user', 'logon-user', 'authorization-user',
+    'x-authenticated-user', 'x-ms-client-principal-name',
+  ];
+  let adLoginRaw = null;
+  let matchedHeader = null;
+  for (const h of HEADER_CANDIDATES) {
+    const v = req.headers[h];
+    if (v && String(v).trim()) { adLoginRaw = v; matchedHeader = h; break; }
+  }
+
+  if (matchedHeader && matchedHeader !== AD_USER_HEADER) {
+    console.log(`ℹ️ whoami: логин взят из заголовка "${matchedHeader}" (основной: "${AD_USER_HEADER}").`);
+    console.log(`   Чтобы убрать этот автоподбор явно, запустите сервер с: AD_USER_HEADER=${matchedHeader}`);
+  }
+
   if (!adLoginRaw) {
-    console.log('🚫 whoami: нет заголовка', AD_USER_HEADER, '- прокси не передал данные AD');
+    console.log('🚫 whoami: ни в одном из заголовков кандидатов нет логина:', HEADER_CANDIDATES.join(', '));
+    console.log('   → Прокси аутентифицировал пользователя (Kerberos/NTLM), но НЕ передал его имя дальше.');
+    console.log('   → На прокси нужно добавить подстановку заголовка, например:');
+    console.log('      IIS/ARR: правило outbound "Server Variable LOGON_USER -> Request Header X-Forwarded-User"');
+    console.log('      Apache : RequestHeader set X-Forwarded-User "%{REMOTE_USER}s" env=REMOTE_USER');
+    console.log('      Nginx  : proxy_set_header X-Forwarded-User $remote_user;  (в блоке location)');
     const debugInfo = buildAdDebugInfo(req, []);
     return res.status(401).json({
-      error: 'Не удалось определить пользователя из Active Directory. Проверьте, что сайт открыт через корпоративный прокси с Windows-аутентификацией.',
+      error: 'Прокси не передал имя пользователя AD: ни один из заголовков (' + HEADER_CANDIDATES.slice(0, 5).join(', ') + ') не пришёл. ' +
+             'Настройте на прокси добавление заголовка с логином (LOGON_USER/REMOTE_USER → X-Forwarded-User) либо укажите правильное имя через переменную AD_USER_HEADER. ' +
+             'Детали: включите DEBUG_AD=1 node server.js и посмотрите presentAuthHeaders.',
       ...(debugInfo ? { debug: debugInfo } : {})
     });
   }
