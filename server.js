@@ -158,7 +158,7 @@ async function setLock(userId, computerName) {
     userId,
     computerName,
     lockedAt: new Date().toISOString(),
-    expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString()
+    expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString()
   };
   
   await fs.writeFile(LOCK_FILE, JSON.stringify(lock, null, 2));
@@ -376,7 +376,7 @@ app.post('/api/lock/extend', async (req, res) => {
   
   const lock = await checkLock();
   if (lock && lock.userId === userId) {
-    lock.expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    lock.expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     await fs.writeFile(LOCK_FILE, JSON.stringify(lock, null, 2));
     console.log('⏰ Блокировка продлена');
     res.json({ success: true });
