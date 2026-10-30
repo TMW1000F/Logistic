@@ -89,6 +89,20 @@ export interface AppState {
 
 // ==================== Утилиты расчёта ====================
 
+// Округление времени до ближайшего 30-минутного шага (:00 или :30)
+export function roundToHalfHour(time: string): string {
+  if (!time) return time;
+  const parts = time.split(':');
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1] ?? '0', 10);
+  if (isNaN(h) || isNaN(m)) return time;
+  let total = h * 60 + Math.round(m / 30) * 30;
+  total = ((total % 1440) + 1440) % 1440;
+  const rh = Math.floor(total / 60);
+  const rm = total % 60;
+  return `${String(rh).padStart(2, '0')}:${String(rm).padStart(2, '0')}`;
+}
+
 export function calcDurationHours(arrival: string, departure: string): number {
   const [ah, am] = arrival.split(':').map(Number);
   const [dh, dm] = departure.split(':').map(Number);

@@ -1,9 +1,31 @@
 import { useState, useMemo } from 'react';
 import { useStore } from '../store';
 import { useToast } from './Toast';
-import { CarRecord, CarInBase, formatPlateDisplay as formatPlateDisplaySafe, calcDurationHours, calcAutoCost, formatNumber, formatDate, generateId, normalizePlate, isValidPlateFormat, plateFormatHint } from '../types';
+import { CarRecord, CarInBase, formatPlateDisplay as formatPlateDisplaySafe, calcDurationHours, calcAutoCost, formatNumber, formatDate, generateId, normalizePlate, isValidPlateFormat, plateFormatHint, roundToHalfHour } from '../types';
 import { Plus, Trash2, CheckSquare, Square } from 'lucide-react';
 import SearchAndTags, { FilterTag } from './SearchAndTags';
+
+// Ненавязчивый короткий клик (для подтверждения действия)
+function playClick() {
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 1000;
+    gain.gain.setValueAtTime(0.06, ctx.currentTime); // негромко
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.08);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.08);
+    osc.onended = () => ctx.close();
+  } catch {
+    /* без звука — не критично */
+  }
+}
 
 interface Props {
   onStatus?: (msg: string) => void;
@@ -270,8 +292,8 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
       car_number: plate,
       car_type: carType,
       carrier: carrier,
-      arrival,
-      departure,
+      arrival: roundToHalfHour(arrival),
+      departure: roundToHalfHour(departure),
       date,
       tariff,
       coefficient: coef,
@@ -280,6 +302,7 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
     dispatch({ type: 'ADD_AUTO_RECORD', payload: record });
     // Оставляем выбранный автомобиль для быстрого ввода нескольких рейсов подряд
     setUseCoefficient(false);
+    playClick(); // ненавязчивый звуковой отклик об успешном добавлении
     toast.success(`Автомобиль ${selectedCar?.display ?? formatPlateDisplaySafe(record.car_number)} добавлен`);
     onStatus?.(`✅ Автомобиль ${selectedCar?.display ?? formatPlateDisplaySafe(record.car_number)} добавлен`);
   };
@@ -450,7 +473,7 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
             <input
               type="time"
               value={arrival}
-              onChange={e => setArrival(e.target.value)}
+              onChange={e => setArrival(roundToHalfHour(e.target.value))}
               step="1800"
               className={`border rounded px-2 py-1 text-sm w-28 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
             />
@@ -460,7 +483,7 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
             <input
               type="time"
               value={departure}
-              onChange={e => setDeparture(e.target.value)}
+              onChange={e => setDeparture(roundToHalfHour(e.target.value))}
               step="1800"
               className={`border rounded px-2 py-1 text-sm w-28 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
             />
