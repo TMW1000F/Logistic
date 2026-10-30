@@ -141,6 +141,12 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
       records = records.filter(r => r.date >= dateRangeStart && r.date <= dateRangeEnd);
     }
 
+    // Сортировка: самые свежие записи — вверху (по дате и времени убытия)
+    records.sort((a, b) => {
+      if (a.date !== b.date) return b.date.localeCompare(a.date);
+      return (b.departure || '').localeCompare(a.departure || '');
+    });
+
     return records;
   }, [state.autoRecords, filterTags, searchQuery, dateRangeEnabled, dateRangeStart, dateRangeEnd]);
 
@@ -285,12 +291,20 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
       coefficient: coef,
     };
 
+    // Запоминаем отображаемый номер до очистки формы (для сообщения)
+    const displayForMsg = selectedCar?.display ?? formatPlateDisplaySafe(record.car_number);
+
     dispatch({ type: 'ADD_AUTO_RECORD', payload: record });
     playClick(); // ненавязчивый отклик об успешном добавлении
-    // Оставляем выбранный автомобиль для быстрого ввода нескольких рейсов подряд
+    // Очищаем форму ввода после успешного добавления (по кнопке или Enter)
+    selectCar(null);
+    setArrival('08:00');
+    setDeparture('17:00');
+    setDate(new Date().toISOString().split('T')[0]);
+    setCoefficient('1.5');
     setUseCoefficient(false);
-    toast.success(`Автомобиль ${selectedCar?.display ?? formatPlateDisplaySafe(record.car_number)} добавлен`);
-    onStatus?.(`✅ Автомобиль ${selectedCar?.display ?? formatPlateDisplaySafe(record.car_number)} добавлен`);
+    toast.success(`Автомобиль ${displayForMsg} добавлен`);
+    onStatus?.(`✅ Автомобиль ${displayForMsg} добавлен`);
   };
 
   // Удаление одной записи

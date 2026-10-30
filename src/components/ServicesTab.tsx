@@ -104,6 +104,12 @@ export default function ServicesTab({ onStatus, darkMode = false, readOnly = fal
       records = records.filter(r => r.date >= dateRangeStart && r.date <= dateRangeEnd);
     }
 
+    // Сортировка: самые свежие записи — вверху (по дате и времени окончания)
+    records.sort((a, b) => {
+      if (a.date !== b.date) return b.date.localeCompare(a.date);
+      return (b.departure || '').localeCompare(a.departure || '');
+    });
+
     return records;
   }, [state.serviceRecords, filterTags, searchQuery, dateRangeEnabled, dateRangeStart, dateRangeEnd]);
 
@@ -234,7 +240,15 @@ export default function ServicesTab({ onStatus, darkMode = false, readOnly = fal
 
     dispatch({ type: 'ADD_SERVICE_RECORD', payload: record });
     playClick(); // ненавязчивый отклик об успешном добавлении
+    // Очищаем форму ввода после успешного добавления (по кнопке или Enter)
+    setServiceType('');
+    setCarrierInput('');
     setQuantity(1);
+    setPaymentType('hourly');
+    setArrival('08:00');
+    setDeparture('17:00');
+    setDate(new Date().toISOString().split('T')[0]);
+    setCoefficient('1.5');
     setUseCoefficient(false);
     toast.success(`Услуга "${serviceType}" добавлена`);
     onStatus?.(`✅ Услуга "${serviceType}" добавлена`);
