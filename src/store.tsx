@@ -22,6 +22,7 @@ type Action =
   | { type: 'SET_TARIFFS'; payload: Tariff[] }
   | { type: 'SAVE_CAR'; payload: CarInBase }
   | { type: 'DELETE_CAR'; payload: string }
+  | { type: 'MERGE_CARS'; payload: CarInBase[] } // импорт базы автомобилей (без перезаписи остальных данных)
   | { type: 'CLEAR_ALL' }
   | { type: 'IMPORT_DATA'; payload: AppState };
 
@@ -62,6 +63,12 @@ function reducer(state: AppState, action: Action): AppState {
     }
     case 'DELETE_CAR':
       return { ...state, cars: state.cars.filter(c => c.id !== action.payload) };
+    case 'MERGE_CARS': {
+      // Обновляем существующие авто по id, добавляем новые; записи рейсов не трогаем
+      const byId = new Map(state.cars.map(c => [c.id, c] as const));
+      for (const c of action.payload) byId.set(c.id, c);
+      return { ...state, cars: [...byId.values()] };
+    }
     case 'CLEAR_ALL':
       return { ...state, autoRecords: [], serviceRecords: [] };
     case 'IMPORT_DATA':

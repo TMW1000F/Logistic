@@ -1,8 +1,9 @@
 import { useState, useMemo, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import { useStore } from '../store';
 import { useToast } from './Toast';
 import { CarInBase, normalizePlate, formatPlateDisplay, isValidPlateFormat, plateFormatHint, generateId } from '../types';
-import { Plus, Edit, Trash2, X, Car, Search } from 'lucide-react';
+import { Plus, Edit, Trash2, X, Car, Search, Download, Upload } from 'lucide-react';
 
 interface Props {
   onStatus?: (msg: string) => void;
@@ -10,9 +11,46 @@ interface Props {
   readOnly?: boolean;
 }
 
+// Разделители полей в текстовых файлах импорта: табуляция или точка с запятой
+const FIELD_SPLIT = /[\t;]/;
+
+// Разбор строки вида «Госномер [ТипТС] [Перевозчик]» → { plate, carType, carrier }
+// Госномер ищется по формату: до него — лишнее игнорируется, после — первое слово тип ТС, второе — перевозчик.
+function parseCarLine(line: string): { plate: string; carType: string; carrier: string } | null {
+  const parts = line.split(FIELD_SPLIT).map(s => s.trim()).filter(Boolean);
+  if (parts.length === 0) return null;
+  let idx = -1;
+  for (let i = 0; i < parts.length; i++) {
+    if (isValidPlateFormat(parts[i])) { idx = i; break; }
+  }
+  if (idx === -1) return null; // строка без номера (заголовок и пр.) — пропускаем
+  return {
+    plate: normalizePlate(parts[idx]),
+    carType: parts[idx + 1] ?? '',
+    carrier: parts[idx + 2] ?? '',
+  };
+}
+
+// Извлечение записей из книги Excel (первый лист): госномер ищем по формату,
+// следующие две ячейки строки — тип ТС и перевозчик.
+function extractCarsFromWorkbook(wb: XLSX.WorkBook): { plate: string; carType: string; carrier: string }[] {
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  if (!sheet) return [];
+  const rows: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false });
+  const result: { plate: string; carType: string; carrier: string }[] = [];
+  for (const row of rows) {
+    const cells = row.map(c => String(c ?? '').trim());
+    const idx = cells.findIndex(c => c && isValidPlateFormat(c));
+    if (idx === -1) continue;
+    result.push({ plate: normalizePlate(cells[idx]), carType: cells[idx + 1] ?? '', carrier: cells[idx + 2] ?? '' });
+  }
+  return result;
+}
+
 export default function CarsTab({ onStatus, darkMode = false, readOnly = false }: Props) {
-  const { state, dispatch } = useStore();
+  const { state, dispatch, syncToServer } = useStore();
   const toast = useToast();
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   // Форма добавления/редактирования
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -140,6 +178,126 @@ export default function CarsTab({ onStatus, darkMode = false, readOnly = false }
     }
   };
 
+  // ==================== Экспорт / импорт базы автомобилей ====================
+
+  // Экспорт — простой текстовый файл с табуляцией в качестве разделителя:
+  // Госномер\tТипТС\tПеревозчик
+  // В990РС124\tКМУ\tАТП
+  const handleExportCars = () => {
+    if (state.cars.length === 0) {
+      toast.warning('База автомобилей пуста — экспортировать нечего');
+      return;
+    }
+    const rows = [...state.cars]
+      .sort((a, b) => a.display.localeCompare(b.display, 'ru'))
+      .map(c => [c.display, c.car_type, c.carrier].join('\t'));
+    const content = ['Госномер\tТипТС\tПеревозчик', ...rows].join('\r\n') + '\r\n';
+    const blob = new Blob(['\uFEFF' + content], { type: 'text/tab-separated-values;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const today = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `cars_base_${today}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Экспортировано автомобилей: ${state.cars.length}`);
+    onStatus?.(`📤 База автомобилей экспортирована (${state.cars.length} шт.)`);
+  };
+
+  const handleImportFile = async (file: File) => {
+    try {
+      // Разбор файла: Excel (.xlsx/.xls) или текст с разделителями (табуляция / «;»)
+      let parsed: { plate: string; carType: string; carrier: string }[];
+      if (/\.(xlsx|xls)$/i.test(file.name)) {
+        const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+        parsed = extractCarsFromWorkbook(wb);
+      } else {
+        let text = await file.text();
+        if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // отрезаем BOM
+        parsed = text.split(/\r\n|\r|\n/).map(parseCarLine).filter(Boolean) as NonNullable<ReturnType<typeof parseCarLine>>[];
+      }
+      if (parsed.length === 0) {
+        toast.error('В файле не найдено ни одной строки с госномером. Ожидается формат: Госномер → ТипТС → Перевозчик (табуляция, «;» или Excel)');
+        return;
+      }
+
+      // Дубликаты внутри файла
+      const seen = new Set<string>();
+      const unique = parsed.filter(p => {
+        if (seen.has(p.plate)) return false;
+        seen.add(p.plate);
+        return true;
+      });
+      const dupInFileCount = parsed.length - unique.length;
+
+      // Совпадения с текущей базой — при импорте обновляем тип/перевозчик существующего авто
+      const existingByPlate = new Map(state.cars.map(c => [c.plate, c] as const));
+      const toUpdate = unique.filter(p => existingByPlate.has(p.plate));
+      const toAdd = unique.filter(p => !existingByPlate.has(p.plate));
+
+      // Проверка сочетаний «Тип ТС + Перевозчик» по тарифам (как при ручном добавлении)
+      const comboOk = (p: { plate: string; carType: string; carrier: string }) =>
+        !!p.carType && !!p.carrier && state.tariffs.some(
+          t => t.type === 'auto' && t.category === p.carType && t.carrier === p.carrier
+        );
+      const badCombo = unique.filter(p => !comboOk(p));
+      if (badCombo.length > 0) {
+        const examples = badCombo.slice(0, 5).map(p => {
+          const d = formatPlateDisplay(p.plate);
+          return !p.carType || !p.carrier
+            ? `${d} (не указан тип ТС или перевозчик)`
+            : `${d} (${p.carType} + ${p.carrier})`;
+        }).join(', ');
+        const more = badCombo.length > 5 ? ` … и ещё ${badCombo.length - 5}` : '';
+        toast.error(`Импорт отменён: в тарифах нет сочетания «Тип ТС + Перевозчик» для ${badCombo.length} авто: ${examples}${more}. Добавьте нужные тарифы или исправьте файл.`);
+        return;
+      }
+
+      const mode = state.cars.length > 0
+        ? (confirm(
+            `Найдено строк с номерами: ${unique.length}\n` +
+            `Новых: ${toAdd.length}, совпадающих с базой (будут обновлены): ${toUpdate.length}` +
+            (dupInFileCount ? `, дублей в файле (пропущены): ${dupInFileCount}` : '') +
+            `\n\nOK — добавить новые и обновить совпадения\nОтмена — полностью ЗАМЕНИТЬ базу импортированными данными`
+          ) ? 'merge' : 'replace')
+        : 'add';
+
+      const carsToAdd: CarInBase[] = toAdd.map(p => ({
+        id: generateId(),
+        plate: p.plate,
+        display: formatPlateDisplay(p.plate),
+        car_type: p.carType,
+        carrier: p.carrier,
+      }));
+      const carsUpdated: CarInBase[] = toUpdate.map(p => {
+        const old = existingByPlate.get(p.plate)!;
+        return { ...old, car_type: p.carType, carrier: p.carrier };
+      });
+
+      if (mode === 'replace') {
+        if (!confirm(`Заменить всю базу автомобилей (${state.cars.length} шт.) на ${unique.length} из файла? Остальные данные (рейсы, тарифы) НЕ затрагиваются.`)) return;
+        dispatch({ type: 'MERGE_CARS', payload: [...carsUpdated, ...carsToAdd] });
+        // Удаляем тех, кого нет в файле
+        const importedPlates = new Set(unique.map(p => p.plate));
+        for (const c of state.cars) {
+          if (!importedPlates.has(c.plate)) dispatch({ type: 'DELETE_CAR', payload: c.id });
+        }
+      } else {
+        dispatch({ type: 'MERGE_CARS', payload: [...carsUpdated, ...carsToAdd] });
+      }
+
+      syncToServer();
+      const summary = mode === 'replace'
+        ? `база заменена: ${unique.length} авто`
+        : `новых: ${carsToAdd.length}, обновлено: ${carsUpdated.length}` + (dupInFileCount ? `, дублей пропущено: ${dupInFileCount}` : '');
+      toast.success(`Импорт завершён (${summary})`);
+      onStatus?.(`📥 Импорт базы автомобилей: ${summary}`);
+    } catch (e) {
+      console.error('Ошибка импорта:', e);
+      toast.error('Не удалось прочитать файл. Используйте текстовый файл (.txt/.tsv/.csv) в кодировке UTF-8 или Windows-1251');
+    }
+  };
+
   const inputCls = `border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`;
 
   return (
@@ -219,15 +377,49 @@ export default function CarsTab({ onStatus, darkMode = false, readOnly = false }
       {/* Список базы */}
       <div className={`flex flex-col flex-1 min-h-0 rounded-lg overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white border border-gray-200'}`}>
         <div className={`flex-shrink-0 border-b p-3 ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
-          <div className="relative">
-            <Search size={16} className={`absolute left-3 top-1/2 -translate-y-1/2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="🔍 Поиск по номеру, типу, перевозчику..."
-              className={`w-full border rounded pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
-            />
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search size={16} className={`absolute left-3 top-1/2 -translate-y-1/2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="🔍 Поиск по номеру, типу, перевозчику..."
+                className={`w-full border rounded pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleExportCars}
+              title="Экспорт базы автомобилей в текстовый файл (Госномер → ТипТС → Перевозчик)"
+              className={`flex items-center gap-1 px-3 py-2 rounded text-sm whitespace-nowrap ${darkMode ? 'bg-gray-700 text-gray-200 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+            >
+              <Download size={14} /> Экспорт
+            </button>
+            {!readOnly && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => importInputRef.current?.click()}
+                  title="Импорт базы автомобилей из текстового файла (формат: Госномер → ТипТС → Перевозчик)"
+                  className={`flex items-center gap-1 px-3 py-2 rounded text-sm whitespace-nowrap ${darkMode ? 'bg-gray-700 text-gray-200 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                >
+                  <Upload size={14} /> Импорт
+                </button>
+                {/* Скрытый input для выбора файла импорта */}
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept=".txt,.tsv,.csv,.xlsx,.xls,text/plain"
+                  className="hidden"
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (f) handleImportFile(f);
+                    e.target.value = ''; // чтобы повторный выбор того же файла тоже срабатывал
+                  }}
+                />
+              </>
+            )}
           </div>
         </div>
 
