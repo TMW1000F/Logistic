@@ -6,7 +6,6 @@ import { CarInBase, normalizePlate, formatPlateDisplay, isValidPlateFormat, plat
 import { Plus, Edit, Trash2, X, Car, Search, Download, Upload } from 'lucide-react';
 
 interface Props {
-  onStatus?: (msg: string) => void;
   darkMode?: boolean;
   readOnly?: boolean;
 }
@@ -47,7 +46,7 @@ function extractCarsFromWorkbook(wb: XLSX.WorkBook): { plate: string; carType: s
   return result;
 }
 
-export default function CarsTab({ onStatus, darkMode = false, readOnly = false }: Props) {
+export default function CarsTab({ darkMode = false, readOnly = false }: Props) {
   const { state, dispatch, syncToServer } = useStore();
   const toast = useToast();
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -161,8 +160,7 @@ export default function CarsTab({ onStatus, darkMode = false, readOnly = false }
     };
 
     dispatch({ type: 'SAVE_CAR', payload: car });
-    toast.success(editingId ? `Автомобиль ${display} обновлён` : `Автомобиль ${display} добавлен в базу`);
-    onStatus?.(editingId ? `✏️ Автомобиль ${display} обновлён` : `🚗 Автомобиль ${display} добавлен в базу`);
+    toast.success(editingId ? `✏️ Автомобиль ${display} обновлён` : `🚗 Автомобиль ${display} добавлен в базу`);
     resetForm();
   };
 
@@ -174,7 +172,8 @@ export default function CarsTab({ onStatus, darkMode = false, readOnly = false }
     if (confirm(msg)) {
       dispatch({ type: 'DELETE_CAR', payload: car.id });
       toast.success(`Автомобиль ${car.display} удалён из базы`);
-      onStatus?.(`🗑️ Автомобиль ${car.display} удалён из базы`);
+      toast.error(`🗑️ Автомобиль ${car.display} удалён из базы`);
+
     }
   };
 
@@ -201,7 +200,8 @@ export default function CarsTab({ onStatus, darkMode = false, readOnly = false }
     a.click();
     URL.revokeObjectURL(url);
     toast.success(`Экспортировано автомобилей: ${state.cars.length}`);
-    onStatus?.(`📤 База автомобилей экспортирована (${state.cars.length} шт.)`);
+    toast.info(`📤 База автомобилей экспортирована (${state.cars.length} шт.)`);
+
   };
 
   const handleImportFile = async (file: File) => {
@@ -291,7 +291,8 @@ export default function CarsTab({ onStatus, darkMode = false, readOnly = false }
         ? `база заменена: ${unique.length} авто`
         : `новых: ${carsToAdd.length}, обновлено: ${carsUpdated.length}` + (dupInFileCount ? `, дублей пропущено: ${dupInFileCount}` : '');
       toast.success(`Импорт завершён (${summary})`);
-      onStatus?.(`📥 Импорт базы автомобилей: ${summary}`);
+      toast.success(`📥 Импорт базы автомобилей: ${summary}`);
+
     } catch (e) {
       console.error('Ошибка импорта:', e);
       toast.error('Не удалось прочитать файл. Используйте текстовый файл (.txt/.tsv/.csv) в кодировке UTF-8 или Windows-1251');

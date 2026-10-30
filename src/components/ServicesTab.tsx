@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, type KeyboardEvent } from 'react';
 import { useStore } from '../store';
 import { useToast } from './Toast';
 import { ServiceRecord, calcServiceHours, calcServiceCost, formatNumber, formatDate, generateId } from '../types';
@@ -14,12 +14,11 @@ const TIME_OPTIONS: string[] = Array.from({ length: 48 }, (_, i) => {
 });
 
 interface Props {
-  onStatus?: (msg: string) => void;
   darkMode?: boolean;
   readOnly?: boolean;
 }
 
-export default function ServicesTab({ onStatus, darkMode = false, readOnly = false }: Props) {
+export default function ServicesTab({ darkMode = false, readOnly = false }: Props) {
   const { state, dispatch } = useStore();
   const toast = useToast();
 
@@ -252,7 +251,8 @@ export default function ServicesTab({ onStatus, darkMode = false, readOnly = fal
     setCoefficient('1.5');
     setUseCoefficient(false);
     toast.success(`Услуга "${serviceType}" добавлена`);
-    onStatus?.(`✅ Услуга "${serviceType}" добавлена`);
+    toast.success(`✅ Услуга "${serviceType}" добавлена`);
+
   };
 
   // Удаление
@@ -261,7 +261,8 @@ export default function ServicesTab({ onStatus, darkMode = false, readOnly = fal
       dispatch({ type: 'DELETE_SERVICE_RECORD', payload: id });
       setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
       toast.success('Запись удалена');
-      onStatus?.('🗑️ Запись удалена');
+      toast.error('🗑️ Запись удалена');
+
     }
   };
 
@@ -278,7 +279,8 @@ export default function ServicesTab({ onStatus, darkMode = false, readOnly = fal
     const count = selectedIds.size;
     setSelectedIds(new Set());
     toast.success(`Удалено записей: ${count}`);
-    onStatus?.(`🗑️ Удалено записей: ${count}`);
+    toast.error(`🗑️ Удалено записей: ${count}`);
+
   };
 
   const toggleSelectAll = () => {
@@ -297,7 +299,7 @@ export default function ServicesTab({ onStatus, darkMode = false, readOnly = fal
     });
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
       handleSave();
     }

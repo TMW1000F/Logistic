@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type ChangeEvent } from 'react';
 import { StoreProvider, useStore } from './store';
 import { ToastProvider, useToast } from './components/Toast';
 import AuthScreen from './components/AuthScreen';
@@ -9,7 +9,7 @@ import TariffsTab from './components/TariffsTab';
 import CarsTab from './components/CarsTab';
 import StatsTab from './components/StatsTab';
 import { Car, Wrench, BarChart3, DollarSign, TrendingUp, HelpCircle, Save, FolderOpen, FilePlus, Sun, Moon, LogOut, Eye, Lock, Database } from 'lucide-react';
-import { calcDurationHours, calcAutoCost, calcServiceHours, calcServiceCost, formatDate } from './types';
+import { calcDurationHours, calcAutoCost, calcServiceHours, calcServiceCost, formatDate, generateId } from './types';
 import { 
   getCurrentUser, 
   logout, 
@@ -28,13 +28,30 @@ const APP_NAME = 'Учёт автомобилей';
 const VERSION = '2.0';
 const COMPANY_NAME = "АО «Логистик-Центр»";
 
+// Единая реакция на блокировку другим пользователем.
+// Раньше одинаковые сообщения «🔒 Файл заблокирован...» дублировались в трёх
+// местах (полинг store, эффект в App, callback потери блокировки) с мелкими
+// расхождениями в формулировках — теперь один источник правды.
+function useLockState(readOnly: boolean, setReadOnly: (v: boolean) => void) {
+  const { isLocked, lockInfo } = useStore();
+  const toast = useToast();
+  useEffect(() => {
+    if (!readOnly && isLocked && lockInfo) {
+      const currentUser = getCurrentUser();
+      if (!currentUser || lockInfo.userId !== currentUser.id) {
+        setReadOnly(true);
+        toast.error(`🔒 Файл заблокирован пользователем: ${lockInfo.computerName}. Режим только для чтения.`);
+      }
+    }
+  }, [isLocked, lockInfo, readOnly]);
+}
+
 function AppContent() {
   const { state, dispatch, isLocked, lockInfo, isLoading, error } = useStore();
   const toast = useToast();
   const [activeTab, setActiveTab] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showHelp, setShowHelp] = useState(false);
-  const [statusMessage, setStatusMessage] = useState('Готов к работе');
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem('darkMode');
     return saved === 'true';
@@ -43,6 +60,8 @@ function AppContent() {
   const [isAuthenticatedUser, setIsAuthenticatedUser] = useState(false);
   const [readOnly, setReadOnly] = useState(false);
   const [showInactivityWarning, setShowInactivityWarning] = useState(false);
+
+  useLockState(readOnly, setReadOnly);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Проверка авторизации и блокировки при загрузке.
@@ -82,17 +101,6 @@ function AppContent() {
     checkAuth();
   }, []);
 
-  // Проверка блокировки файла другим пользователем + реакция на потерю своей
-  useEffect(() => {
-    if (isLocked && lockInfo && isAuthenticatedUser && !readOnly) {
-      const currentUser = getCurrentUser();
-      // Если файл заблокирован ДРУГИМ пользователем
-      if (currentUser && lockInfo.userId !== currentUser.id) {
-        setReadOnly(true);
-        toast.error(`🔒 Файл заблокирован пользователем: ${lockInfo.computerName}. Режим только для чтения.`);
-      }
-    }
-  }, [isLocked, lockInfo, isAuthenticatedUser, readOnly]);
 
   // Если фоновое продление не смогло продлить нашу блокировку (она истекла
   // или её занял другой) — немедленно переходим в режим только для чтения,
@@ -103,7 +111,7 @@ function AppContent() {
       const currentUser = getCurrentUser();
       if (status.locked && status.lockInfo && currentUser && status.lockInfo.userId !== currentUser.id) {
         setReadOnly(true);
-        toast.error(`🔒 Ваша блокировка перехвачена пользователем: ${status.lockInfo.computerName}. Включён режим только для чтения.`);
+        toast.error(`🔒 Файл заблокирован пользователем: ${status.lockInfo.computerName}. Режим только для чтения.`);
       } else {
         setReadOnly(true);
         toast.warning('⚠️ Блокировка больше не активна — включён режим только для чтения. Сохраните изменения и войдите заново.');
@@ -221,11 +229,6 @@ function AppContent() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [state]);
 
-  const showStatus = (msg: string) => {
-    setStatusMessage(msg);
-    setTimeout(() => setStatusMessage('Готов к работе'), 3000);
-  };
-
   // Выход из системы
   const handleLogout = async () => {
     if (!confirm('Выйти из системы?')) return;
@@ -298,7 +301,6 @@ function AppContent() {
     a.click();
     URL.revokeObjectURL(url);
     toast.success(`Сохранено: авто — ${state.autoRecords.length}, услуг — ${state.serviceRecords.length}`);
-    showStatus(`💾 Сохранено: авто — ${state.autoRecords.length}, услуг — ${state.serviceRecords.length}`);
   };
 
   // Загрузка из файла
@@ -306,7 +308,7 @@ function AppContent() {
     fileInputRef.current?.click();
   };
 
-  const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelected = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -356,7 +358,7 @@ function AppContent() {
           
           if (type === 'auto') {
             autoRecords.push({
-              id: Math.random().toString(36).substr(2, 9),
+              id: generateId(),
               car_number: cols[1],
               car_type: cols[2],
               carrier: cols[3],
@@ -369,7 +371,7 @@ function AppContent() {
           } else if (type === 'service') {
             const paymentType = cols[5] === 'Почасовая' ? 'hourly' : 'fixed';
             serviceRecords.push({
-              id: Math.random().toString(36).substr(2, 9),
+              id: generateId(),
               service_type: cols[2],
               carrier: cols[3],
               quantity: parseInt(cols[4]) || 1,
@@ -422,7 +424,6 @@ function AppContent() {
         }
         
         toast.success(`Загружено: авто — ${autoRecords.length}, услуг — ${serviceRecords.length} (${mode === 'replace' ? 'замена' : 'добавление'})`);
-        showStatus(`📂 Загружено: авто — ${autoRecords.length}, услуг — ${serviceRecords.length}`);
       } catch (err) {
         toast.error('Ошибка чтения файла: ' + (err as Error).message);
       }
@@ -439,7 +440,6 @@ function AppContent() {
     }
     dispatch({ type: 'CLEAR_ALL' });
     toast.info('Создан новый файл');
-    showStatus('📄 Создан новый файл');
   };
 
   const tabs = [
@@ -625,13 +625,12 @@ function AppContent() {
       {/* Содержимое — занимает всё оставшееся место */}
       <main className="flex-1 max-w-full mx-auto px-4 py-4 w-full flex flex-col min-h-0 overflow-hidden">
         <div className="flex-1 min-h-0">
-          <ActiveComponent onStatus={showStatus} darkMode={darkMode} readOnly={readOnly} />
+          <ActiveComponent darkMode={darkMode} readOnly={readOnly} />
         </div>
       </main>
 
       {/* Строка состояния — всегда внизу */}
-      <footer className={`border-t px-4 py-2 flex items-center justify-between text-xs flex-shrink-0 ${darkMode ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-white border-gray-200 text-gray-500'}`}>
-        <span>{statusMessage}</span>
+      <footer className={`border-t px-4 py-2 flex justify-end text-xs flex-shrink-0 ${darkMode ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-white border-gray-200 text-gray-500'}`}>
         <span>{currentTime.toLocaleDateString('ru-RU')} {currentTime.toLocaleTimeString('ru-RU')}</span>
       </footer>
 

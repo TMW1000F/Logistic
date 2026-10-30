@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, type KeyboardEvent } from 'react';
 import { useStore } from '../store';
 import { useToast } from './Toast';
 import { CarRecord, CarInBase, formatPlateDisplay as formatPlateDisplaySafe, calcDurationHours, calcAutoCost, formatNumber, formatDate, generateId, normalizePlate, isValidPlateFormat, plateFormatHint } from '../types';
@@ -14,12 +14,11 @@ const TIME_OPTIONS: string[] = Array.from({ length: 48 }, (_, i) => {
 });
 
 interface Props {
-  onStatus?: (msg: string) => void;
   darkMode?: boolean;
   readOnly?: boolean;
 }
 
-export default function AutoTab({ onStatus, darkMode = false, readOnly = false }: Props) {
+export default function AutoTab({ darkMode = false, readOnly = false }: Props) {
   const { state, dispatch } = useStore();
   const toast = useToast();
 
@@ -305,7 +304,8 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
     setCoefficient('1.5');
     setUseCoefficient(false);
     toast.success(`Автомобиль ${displayForMsg} добавлен`);
-    onStatus?.(`✅ Автомобиль ${displayForMsg} добавлен`);
+    toast.success(`✅ Автомобиль ${displayForMsg} добавлен`);
+
   };
 
   // Удаление одной записи
@@ -314,7 +314,8 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
       dispatch({ type: 'DELETE_AUTO_RECORD', payload: id });
       setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
       toast.success('Запись удалена');
-      onStatus?.('🗑️ Запись удалена');
+      toast.error('🗑️ Запись удалена');
+
     }
   };
 
@@ -332,7 +333,8 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
     const count = selectedIds.size;
     setSelectedIds(new Set());
     toast.success(`Удалено записей: ${count}`);
-    onStatus?.(`🗑️ Удалено записей: ${count}`);
+    toast.error(`🗑️ Удалено записей: ${count}`);
+
   };
 
   // Выбор всех / снять все
@@ -353,7 +355,7 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
   };
 
   // Обработка клавиш в поле номера: стрелки — навигация по подсказкам, Enter — выбор/добавление
-  const handleKeyDown = (e: React.KeyboardEvent, source: 'plate' | 'other' = 'other') => {
+  const handleKeyDown = (e: KeyboardEvent, source: 'plate' | 'other' = 'other') => {
     if (source === 'plate') {
       if (showDropdown && plateSuggestions.length > 0) {
         if (e.key === 'ArrowDown') {

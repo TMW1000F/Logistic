@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, useEffect, ReactNode, useState } from 'react';
+import { Dispatch, createContext, useContext, useReducer, useEffect, useRef, ReactNode, useState } from 'react';
 import { AppState, CarInBase, CarRecord, ServiceRecord, Tariff } from './types';
 import { fetchData, updateData, startLockExtension, stopLockExtension, getLockInfo, getCurrentUser } from './api';
 
@@ -81,7 +81,7 @@ function reducer(state: AppState, action: Action): AppState {
 // ==================== Контекст ====================
 interface StoreContextType {
   state: AppState;
-  dispatch: React.Dispatch<Action>;
+  dispatch: Dispatch<Action>;
   syncToServer: () => Promise<boolean>;
   isLocked: boolean;
   lockInfo: { userId: string; computerName: string } | null;
@@ -97,8 +97,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [lockInfo, setLockInfo] = useState<{ userId: string; computerName: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [syncTimeout, setSyncTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
+  // Таймер debounce — в useRef, чтобы не вызывать лишний ре-рендер на каждое изменение
+  const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [hasLoaded, setHasLoaded] = useState(false); // Флаг первой загрузки
+
+  // Единственная точка применения статуса блокировки к состоянию стора
+  // (раньше этот код дословно повторялся в полинг-эффекте, автосохранении
+  // и syncToServer).
+  const applyLock = (locked: boolean, info: { userId: string; computerName: string } | null) => {
+    setIsLocked(locked);
+    setLockInfo(info);
+  };
 
   // Загрузка данных с сервера при старте
   useEffect(() => {
@@ -135,16 +144,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     async function checkLockStatus() {
       try {
         const lockStatus = await getLockInfo();
-        if (lockStatus.locked && lockStatus.lockInfo) {
-          setIsLocked(true);
-          setLockInfo({
-            userId: lockStatus.lockInfo.userId,
-            computerName: lockStatus.lockInfo.computerName
-          });
-        } else {
-          setIsLocked(false);
-          setLockInfo(null);
-        }
+        applyLock(lockStatus.locked && !!lockStatus.lockInfo, lockStatus.lockInfo);
       } catch (err) {
         console.error('Ошибка проверки статуса блокировки:', err);
       }
@@ -164,8 +164,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (isLoading || !hasLoaded) return; // Не сохраняем при первой загрузке
     
     // Очищаем предыдущий таймер
-    if (syncTimeout) {
-      clearTimeout(syncTimeout);
+    if (syncTimeoutRef.current) {
+      clearTimeout(syncTimeoutRef.current);
     }
     
     // Устанавливаем новый таймер (задержка 2 секунды)
@@ -191,18 +191,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           // Продлеваем блокировку чаще, чем истекает её TTL (5 мин):
           // иначе файл успевал удалиться и следующий пользователь видел «пустой» lock.json.
           startLockExtension();
-          setIsLocked(false);
-          setLockInfo(null);
+          applyLock(false, null);
           setError(null);
           // Также сохраняем в localStorage как backup
           localStorage.setItem('car_accounting_data', JSON.stringify(state));
         } else {
           // Данные заблокированы
-          setIsLocked(true);
-          setLockInfo(result.lockInfo ? { 
-            userId: result.lockInfo.userId, 
-            computerName: result.lockInfo.computerName 
-          } : null);
+          applyLock(!!result.lockInfo, result.lockInfo ?? null);
           setError(`Данные заблокированы пользователем: ${result.lockInfo?.computerName || 'неизвестно'}`);
         }
       } catch (err) {
@@ -213,7 +208,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     }, 2000);
     
-    setSyncTimeout(timeout);
+    syncTimeoutRef.current = timeout;
     
     return () => {
       if (timeout) clearTimeout(timeout);
@@ -236,16 +231,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (!currentUser) return false;
       const result = await updateData(state, currentUser.id, currentUser.displayName);
       if (result.success) {
-        setIsLocked(false);
-        setLockInfo(null);
+        applyLock(false, null);
         setError(null);
         return true;
       } else {
-        setIsLocked(true);
-        setLockInfo(result.lockInfo ? { 
-          userId: result.lockInfo.userId, 
-          computerName: result.lockInfo.computerName 
-        } : null);
+        applyLock(!!result.lockInfo, result.lockInfo ?? null);
         return false;
       }
     } catch (err) {

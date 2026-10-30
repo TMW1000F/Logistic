@@ -1,16 +1,15 @@
-import React, { useState, useMemo } from 'react';
+import { Fragment, useState, useMemo } from 'react';
 import { useStore } from '../store';
 import { useToast } from './Toast';
 import { calcDurationHours, calcAutoCost, calcServiceHours, calcServiceCost, formatNumber, formatDate } from '../types';
 import * as XLSX from 'xlsx';
 
 interface Props {
-  onStatus?: (msg: string) => void;
   darkMode?: boolean;
   readOnly?: boolean;
 }
 
-export default function ResultsTab({ onStatus, darkMode = false, readOnly = false }: Props) {
+export default function ResultsTab({ darkMode = false, readOnly = false }: Props) {
   const { state } = useStore();
   const toast = useToast();
 
@@ -307,11 +306,11 @@ export default function ResultsTab({ onStatus, darkMode = false, readOnly = fals
                       ? (idx % 2 === 0 ? 'bg-blue-900/20' : 'bg-green-900/20')
                       : (idx % 2 === 0 ? 'bg-blue-50' : 'bg-green-50');
                     return (
-                      <React.Fragment key={idx}>
+                      <Fragment key={idx}>
                         <th className={`px-1 py-1 text-xs border-l ${colColors} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Кол-во</th>
                         <th className={`px-1 py-1 text-xs ${colColors} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Часы</th>
                         <th className={`px-1 py-1 text-xs ${colColors} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Стоим.</th>
-                      </React.Fragment>
+                      </Fragment>
                     );
                   })}
                   <th className={`px-2 py-1 border-l ${darkMode ? 'bg-purple-900/20' : 'bg-purple-50'}`}></th>
@@ -343,11 +342,11 @@ export default function ResultsTab({ onStatus, darkMode = false, readOnly = fals
                           : colColors;
                         
                         return (
-                          <React.Fragment key={tIdx}>
+                          <Fragment key={tIdx}>
                             <td className={`px-1 py-1.5 text-center border-l ${selectedColColors}`}>{td.count || ''}</td>
                             <td className={`px-1 py-1.5 text-right ${selectedColColors}`}>{td.time > 0 ? formatNumber(td.time) : ''}</td>
                             <td className={`px-1 py-1.5 text-right ${selectedColColors}`}>{td.cost > 0 ? formatNumber(td.cost) : ''}</td>
-                          </React.Fragment>
+                          </Fragment>
                         );
                       })}
                       <td className={`px-2 py-1.5 text-right border-l font-medium ${darkMode ? 'bg-purple-900/10' : 'bg-purple-50/50'} ${isSelected ? (darkMode ? 'bg-blue-900/30' : 'bg-blue-100/70') : ''}`}>{row.dayCount}</td>

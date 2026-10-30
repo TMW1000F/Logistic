@@ -5,12 +5,11 @@ import { Tariff, formatNumber, generateId } from '../types';
 import { Save, Edit, Trash2, Download, Upload } from 'lucide-react';
 
 interface Props {
-  onStatus?: (msg: string) => void;
   darkMode?: boolean;
   readOnly?: boolean;
 }
 
-export default function TariffsTab({ onStatus, darkMode = false, readOnly = false }: Props) {
+export default function TariffsTab({ darkMode = false, readOnly = false }: Props) {
   const { state, dispatch } = useStore();
   const toast = useToast();
 

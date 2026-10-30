@@ -130,6 +130,12 @@ export function formatDate(dateStr: string): string {
   return `${d}.${m}.${y}`;
 }
 
+// Единый генератор ID для всего приложения (crypto.randomUUID с fallback).
+// Использовать ТОЛЬКО эту функцию — инлайн-генерации через Math.random()
+// давали коллизии при импорте больших файлов.
 export function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
 }
