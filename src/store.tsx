@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode, useState } from 'react';
-import { AppState, CarRecord, ServiceRecord, Tariff } from './types';
+import { AppState, CarInBase, CarRecord, ServiceRecord, Tariff } from './types';
 import { fetchData, updateData, startLockExtension, stopLockExtension, getLockInfo, getCurrentUser } from './api';
 
 // ==================== Начальное состояние ====================
@@ -7,6 +7,7 @@ const initialState: AppState = {
   autoRecords: [],
   serviceRecords: [],
   tariffs: [],
+  cars: [],
 };
 
 // ==================== Действия ====================
@@ -19,13 +20,15 @@ type Action =
   | { type: 'ADD_TARIFF'; payload: Tariff }
   | { type: 'DELETE_TARIFF'; payload: string }
   | { type: 'SET_TARIFFS'; payload: Tariff[] }
+  | { type: 'SAVE_CAR'; payload: CarInBase }
+  | { type: 'DELETE_CAR'; payload: string }
   | { type: 'CLEAR_ALL' }
   | { type: 'IMPORT_DATA'; payload: AppState };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'LOAD_STATE':
-      return action.payload;
+      return { ...initialState, ...action.payload };
     case 'ADD_AUTO_RECORD':
       return { ...state, autoRecords: [...state.autoRecords, action.payload] };
     case 'DELETE_AUTO_RECORD':
@@ -44,10 +47,25 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, tariffs: state.tariffs.filter(t => t.id !== action.payload) };
     case 'SET_TARIFFS':
       return { ...state, tariffs: action.payload };
+    case 'SAVE_CAR': {
+      const exists = state.cars.some(c => c.id === action.payload.id);
+      if (exists) {
+        // При изменении номера обновляем и уже внесённые записи рейсов с этим номером
+        const oldCar = state.cars.find(c => c.id === action.payload.id)!;
+        const cars = state.cars.map(c => c.id === action.payload.id ? action.payload : c);
+        const autoRecords = oldCar.plate !== action.payload.plate
+          ? state.autoRecords.map(r => r.car_number === oldCar.plate ? { ...r, car_number: action.payload.plate } : r)
+          : state.autoRecords;
+        return { ...state, cars, autoRecords };
+      }
+      return { ...state, cars: [...state.cars, action.payload] };
+    }
+    case 'DELETE_CAR':
+      return { ...state, cars: state.cars.filter(c => c.id !== action.payload) };
     case 'CLEAR_ALL':
       return { ...state, autoRecords: [], serviceRecords: [] };
     case 'IMPORT_DATA':
-      return action.payload;
+      return { ...initialState, ...action.payload };
     default:
       return state;
   }

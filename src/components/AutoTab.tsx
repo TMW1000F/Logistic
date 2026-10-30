@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useStore } from '../store';
 import { useToast } from './Toast';
-import { CarRecord, calcDurationHours, calcAutoCost, formatNumber, formatDate, generateId } from '../types';
+import { CarRecord, CarInBase, formatPlateDisplay as formatPlateDisplaySafe, calcDurationHours, calcAutoCost, formatNumber, formatDate, generateId, normalizePlate, isValidPlateFormat, plateFormatHint } from '../types';
 import { Plus, Trash2, CheckSquare, Square } from 'lucide-react';
 import SearchAndTags, { FilterTag } from './SearchAndTags';
 
@@ -16,7 +16,10 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
   const toast = useToast();
 
   // Форма ввода
-  const [carNumber, setCarNumber] = useState('');
+  const [selectedCarId, setSelectedCarId] = useState('');
+  const [plateQuery, setPlateQuery] = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [highlightedIdx, setHighlightedIdx] = useState(0);
   const [carType, setCarType] = useState('');
   const [carrier, setCarrier] = useState('');
   const [arrival, setArrival] = useState('08:00');
@@ -48,6 +51,56 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
   const autoCarriers = useMemo(() => {
     return [...new Set(state.tariffs.filter(t => t.type === 'auto').map(t => t.carrier))].sort();
   }, [state.tariffs]);
+
+  // База автомобилей: выбранный автомобиль и отфильтрованный список для подсказок
+  const selectedCar = useMemo(
+    () => state.cars.find(c => c.id === selectedCarId) || null,
+    [state.cars, selectedCarId]
+  );
+
+  const plateSuggestions = useMemo(() => {
+    const q = plateQuery.trim();
+    if (!q) return state.cars.slice().sort((a, b) => a.display.localeCompare(b.display, 'ru'));
+    // Ищем по нормализованному вводу (без пробелов) — допускаем часть номера
+    const nq = normalizePlate(q);
+    const lq = q.toLowerCase();
+    return state.cars
+      .filter(c =>
+        c.plate.includes(nq) ||
+        c.display.toLowerCase().includes(lq) ||
+        c.car_type.toLowerCase().includes(lq) ||
+        c.carrier.toLowerCase().includes(lq)
+      )
+      .sort((a, b) => a.display.localeCompare(b.display, 'ru'));
+  }, [state.cars, plateQuery]);
+
+  // Выбор автомобиля из базы: тип ТС и перевозчик подтягиваются автоматически
+  const selectCar = (car: CarInBase | null) => {
+    if (!car) {
+      setSelectedCarId('');
+      setPlateQuery('');
+      setCarType('');
+      setCarrier('');
+      return;
+    }
+    setSelectedCarId(car.id);
+    setPlateQuery(car.display);
+    setCarType(car.car_type);
+    setCarrier(car.carrier);
+    setShowDropdown(false);
+  };
+
+  const handlePlateInput = (value: string) => {
+    // Если пользователь начал печатать заново — сбрасываем выбор, но запоминаем ввод
+    if (selectedCarId && value !== (selectedCar?.display ?? '')) {
+      setSelectedCarId('');
+      setCarType('');
+      setCarrier('');
+    }
+    setPlateQuery(value);
+    setShowDropdown(true);
+    setHighlightedIdx(0);
+  };
 
   // Получить тариф
   const getTariff = (type: string, carr: string): number | null => {
@@ -180,7 +233,30 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
 
   // Сохранение
   const handleSave = () => {
-    if (!carNumber.trim() || !carType || !carrier) {
+    let plate = '';
+    if (selectedCar) {
+      plate = selectedCar.plate;
+    } else {
+      const q = plateQuery.trim();
+      if (!q || !carType || !carrier) {
+        toast.warning('Выберите автомобиль из базы (начните вводить номер) и укажите тип ТС и перевозчика');
+        return;
+      }
+      if (!isValidPlateFormat(q)) {
+        toast.error(`Неверный формат номера. ${plateFormatHint()}`);
+        return;
+      }
+      const norm = normalizePlate(q);
+      const inBase = state.cars.find(c => c.plate === norm);
+      if (inBase) {
+        plate = inBase.plate;
+      } else {
+        toast.warning(`Автомобиль «${formatPlateDisplaySafe(norm)}» не найден в базе. Добавьте его во вкладку «База автомобилей» или выберите из подсказок.`);
+        setShowDropdown(true);
+        return;
+      }
+    }
+    if (!carType || !carrier) {
       toast.warning('Заполните обязательные поля: номер ТС, тип ТС, перевозчик');
       return;
     }
@@ -199,7 +275,7 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
 
     const record: CarRecord = {
       id: generateId(),
-      car_number: carNumber.trim(),
+      car_number: plate,
       car_type: carType,
       carrier: carrier,
       arrival,
@@ -210,10 +286,10 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
     };
 
     dispatch({ type: 'ADD_AUTO_RECORD', payload: record });
-    setCarNumber('');
+    // Оставляем выбранный автомобиль для быстрого ввода нескольких рейсов подряд
     setUseCoefficient(false);
-    toast.success(`Автомобиль ${record.car_number} добавлен`);
-    onStatus?.(`✅ Автомобиль ${record.car_number} добавлен`);
+    toast.success(`Автомобиль ${selectedCar?.display ?? formatPlateDisplaySafe(record.car_number)} добавлен`);
+    onStatus?.(`✅ Автомобиль ${selectedCar?.display ?? formatPlateDisplaySafe(record.car_number)} добавлен`);
   };
 
   // Удаление одной записи
@@ -260,12 +336,44 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
     });
   };
 
-  // Обработка Enter
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  // Обработка клавиш в поле номера: стрелки — навигация по подсказкам, Enter — выбор/добавление
+  const handleKeyDown = (e: React.KeyboardEvent, source: 'plate' | 'other' = 'other') => {
+    if (source === 'plate') {
+      if (showDropdown && plateSuggestions.length > 0) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setHighlightedIdx(i => Math.min(i + 1, plateSuggestions.length - 1));
+          return;
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setHighlightedIdx(i => Math.max(i - 1, 0));
+          return;
+        }
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          // Если набран точный номер из базы и он отфильтрован в одну строку — выбираем его
+          const exact = plateSuggestions.find(c => c.plate === normalizePlate(plateQuery));
+          selectCar(exact ?? plateSuggestions[highlightedIdx] ?? null);
+          return;
+        }
+        if (e.key === 'Escape') {
+          setShowDropdown(false);
+          return;
+        }
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleSave();
+      }
+      return;
+    }
     if (e.key === 'Enter') {
       handleSave();
     }
   };
+
+  const idxInList = (id: string) => plateSuggestions.findIndex(c => c.id === id);
 
   return (
     <div className="flex flex-col h-full">
@@ -274,16 +382,67 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
       <div className={`flex-shrink-0 rounded-lg p-3 mb-2 ${darkMode ? 'bg-gray-800' : 'bg-white border border-gray-200'}`}>
         {/* Строка 1: Номер ТС, Тип ТС, Перевозчик, Дата */}
         <div className="grid grid-cols-4 gap-2 mb-2">
-          <div>
-            <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Номер ТС:</label>
-            <input
-              type="text"
-              value={carNumber}
-              onChange={e => setCarNumber(e.target.value)}
-              onKeyDown={handleKeyDown}
-              className={`w-full border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
-              placeholder="А123БВ777"
-            />
+          <div className="relative">
+            <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Автомобиль (из базы):</label>
+            <div className="flex gap-1">
+              <input
+                type="text"
+                value={plateQuery}
+                onChange={e => handlePlateInput(e.target.value)}
+                onFocus={() => setShowDropdown(true)}
+                onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
+                onKeyDown={e => handleKeyDown(e, 'plate')}
+                placeholder="Начните вводить номер..."
+                className={`w-full border rounded px-2 py-1 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400 ${
+                  selectedCar
+                    ? (darkMode ? 'bg-gray-700 border-green-500 text-white' : 'border-green-500')
+                    : (darkMode ? 'bg-gray-700 border-gray-600 text-white' : '')
+                }`}
+              />
+              {selectedCarId && (
+                <button
+                  type="button"
+                  onMouseDown={e => { e.preventDefault(); selectCar(null); }}
+                  title="Сбросить выбор"
+                  className={`px-2 rounded text-xs ${darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            {showDropdown && (
+              <div className={`absolute z-30 left-0 right-0 top-full mt-1 max-h-60 overflow-auto rounded-md border shadow-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'}`}>
+                {plateSuggestions.length === 0 ? (
+                  <div className={`px-3 py-2 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Ничего не найдено. Добавьте автомобиль во вкладке «База автомобилей».
+                  </div>
+                ) : (
+                  <>
+                    {plateSuggestions.map(c => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onMouseDown={e => { e.preventDefault(); selectCar(c); }}
+                        onMouseEnter={() => setHighlightedIdx(plateSuggestions.findIndex(x => x.id === c.id))}
+                        className={`w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 ${
+                          idxInList(c.id) === highlightedIdx && showDropdown
+                            ? (darkMode ? 'bg-blue-800 text-white' : 'bg-blue-600 text-white')
+                            : c.id === selectedCarId
+                              ? (darkMode ? 'bg-blue-900/50 text-blue-200' : 'bg-blue-100 text-blue-800')
+                              : (darkMode ? 'text-gray-100' : '')
+                        }`}
+                      >
+                        <span className="font-mono font-semibold">{c.display}</span>
+                        <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{c.car_type} · {c.carrier}</span>
+                      </button>
+                    ))}
+                    {plateQuery.trim() && !isValidPlateFormat(plateQuery) && (
+                      <div className={`px-3 py-1.5 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{plateFormatHint()}</div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </div>
           <div>
             <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Тип ТС:</label>

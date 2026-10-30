@@ -96,7 +96,8 @@ async function initDataFile() {
     const initialData = {
       autoRecords: [],
       serviceRecords: [],
-      tariffs: []
+      tariffs: [],
+      cars: []
     };
     await fs.writeFile(DATA_FILE, JSON.stringify(initialData, null, 2));
     console.log('✅ Файл data.json создан');
@@ -110,7 +111,7 @@ async function readData() {
     return JSON.parse(data);
   } catch (error) {
     console.error('❌ Ошибка чтения данных:', error);
-    return { autoRecords: [], serviceRecords: [], tariffs: [] };
+    return { autoRecords: [], serviceRecords: [], tariffs: [], cars: [] };
   }
 }
 

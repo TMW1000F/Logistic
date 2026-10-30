@@ -6,8 +6,9 @@ import AutoTab from './components/AutoTab';
 import ServicesTab from './components/ServicesTab';
 import ResultsTab from './components/ResultsTab';
 import TariffsTab from './components/TariffsTab';
+import CarsTab from './components/CarsTab';
 import StatsTab from './components/StatsTab';
-import { Car, Wrench, BarChart3, DollarSign, TrendingUp, HelpCircle, Save, FolderOpen, FilePlus, Sun, Moon, LogOut, Eye, Lock } from 'lucide-react';
+import { Car, Wrench, BarChart3, DollarSign, TrendingUp, HelpCircle, Save, FolderOpen, FilePlus, Sun, Moon, LogOut, Eye, Lock, Database } from 'lucide-react';
 import { calcDurationHours, calcAutoCost, calcServiceHours, calcServiceCost, formatDate } from './types';
 import { 
   getCurrentUser, 
@@ -399,9 +400,10 @@ function AppContent() {
           dispatch({ 
             type: 'IMPORT_DATA', 
             payload: { 
-              autoRecords, 
-              serviceRecords, 
-              tariffs: state.tariffs 
+              autoRecords,
+              serviceRecords,
+              tariffs: state.tariffs,
+              cars: state.cars
             } 
           });
         } else {
@@ -411,9 +413,10 @@ function AppContent() {
           dispatch({ 
             type: 'IMPORT_DATA', 
             payload: { 
-              autoRecords: newAutoRecords, 
-              serviceRecords: newServiceRecords, 
-              tariffs: state.tariffs 
+              autoRecords: newAutoRecords,
+              serviceRecords: newServiceRecords,
+              tariffs: state.tariffs,
+              cars: state.cars
             } 
           });
         }
@@ -444,6 +447,7 @@ function AppContent() {
     { name: 'Другие услуги', icon: Wrench, component: ServicesTab },
     { name: 'Итоги', icon: BarChart3, component: ResultsTab },
     { name: 'Тарифы', icon: DollarSign, component: TariffsTab },
+    { name: 'База автомобилей', icon: Database, component: CarsTab },
     { name: 'Статистика', icon: TrendingUp, component: StatsTab },
   ];
 
@@ -653,8 +657,9 @@ function AppContent() {
                 <ol className="space-y-1 text-xs list-decimal list-inside">
                   <li>Перейдите во вкладку «Тарифы»</li>
                   <li>Добавьте тарифы для автомобилей и/или услуг</li>
+                  <li>Во вкладке «База автомобилей» добавьте автомобили в базу (госномер, тип ТС, перевозчик)</li>
                   <li>Перейдите на вкладку «Данные автомобиля» или «Другие услуги»</li>
-                  <li>Заполните форму и нажмите «Добавить»</li>
+                  <li>Выберите автомобиль из базы, заполните форму и нажмите «Добавить»</li>
                 </ol>
               </div>
 
