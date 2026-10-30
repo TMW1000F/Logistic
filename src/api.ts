@@ -33,28 +33,18 @@ function generateUserId(): string {
   return id;
 }
 
-// Получение имени компьютера
+// Получение имени компьютера (автоматически, по ОС)
 export function getComputerName(): string {
-  // Сначала проверяем, ввёл ли пользователь своё имя
+  // Сначала проверяем, не задано ли имя ранее
   const stored = localStorage.getItem('computerName');
   if (stored) return stored;
-  
-  // Если нет — определяем по ОС (fallback)
+
+  // Определяем по ОС (fallback)
   const ua = navigator.userAgent;
   if (ua.includes('Windows')) return 'Windows PC';
   if (ua.includes('Mac')) return 'Mac';
   if (ua.includes('Linux')) return 'Linux';
   return 'Неизвестный';
-}
-
-// Установка имени компьютера (вызывается из диалога)
-export function setComputerName(name: string): void {
-  localStorage.setItem('computerName', name);
-}
-
-// Проверка, задано ли имя компьютера
-export function hasComputerName(): boolean {
-  return !!localStorage.getItem('computerName');
 }
 
 export const userId = generateUserId();

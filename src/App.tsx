@@ -10,9 +10,6 @@ import StatsTab from './components/StatsTab';
 import { Car, Wrench, BarChart3, DollarSign, TrendingUp, HelpCircle, Save, FolderOpen, FilePlus, Sun, Moon, LogOut, Eye, Lock } from 'lucide-react';
 import { calcDurationHours, calcAutoCost, calcServiceHours, calcServiceCost, formatDate } from './types';
 import { 
-  hasComputerName, 
-  setComputerName, 
-  getComputerName, 
   getCurrentUser, 
   logout, 
   verifyToken,
@@ -39,8 +36,6 @@ function AppContent() {
     const saved = localStorage.getItem('darkMode');
     return saved === 'true';
   });
-  const [showComputerNameDialog, setShowComputerNameDialog] = useState(!hasComputerName());
-  const [computerNameInput, setComputerNameInput] = useState('');
   const [isAuthChecked, setIsAuthChecked] = useState(false);
   const [isAuthenticatedUser, setIsAuthenticatedUser] = useState(false);
   const [readOnly, setReadOnly] = useState(false);
@@ -633,55 +628,6 @@ function AppContent() {
               className="mt-4 w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
             >
               Закрыть
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Диалог ввода имени компьютера */}
-      {showComputerNameDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className={`rounded-lg shadow-xl max-w-md w-full mx-4 p-6 ${darkMode ? 'bg-gray-800 text-gray-100' : 'bg-white text-gray-900'}`}>
-            <h2 className="text-lg font-bold mb-4">👋 Добро пожаловать!</h2>
-            <p className={`text-sm mb-4 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-              Для работы с системой учёта автомобилей необходимо указать имя вашего компьютера. 
-              Это имя будет видно другим пользователям, когда вы заблокируете данные для редактирования.
-            </p>
-            <div className="mb-4">
-              <label className={`block text-sm mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                Имя компьютера:
-              </label>
-              <input
-                type="text"
-                value={computerNameInput}
-                onChange={(e) => setComputerNameInput(e.target.value)}
-                placeholder="Например: Бухгалтерия-01"
-                className={`w-full border rounded px-3 py-2 ${
-                  darkMode 
-                    ? 'bg-gray-700 border-gray-600 text-white' 
-                    : 'bg-white border-gray-300 text-gray-900'
-                }`}
-                autoFocus
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && computerNameInput.trim()) {
-                    setComputerName(computerNameInput.trim());
-                    setShowComputerNameDialog(false);
-                  }
-                }}
-              />
-            </div>
-            <button
-              onClick={() => {
-                if (computerNameInput.trim()) {
-                  setComputerName(computerNameInput.trim());
-                  setShowComputerNameDialog(false);
-                } else {
-                  toast.warning('Пожалуйста, введите имя компьютера');
-                }
-              }}
-              className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
-            >
-              Продолжить
             </button>
           </div>
         </div>
