@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useStore } from '../store';
 import { useToast } from './Toast';
 import { ServiceRecord, calcServiceHours, calcServiceCost, formatNumber, formatDate, generateId } from '../types';
@@ -40,6 +40,9 @@ export default function ServicesTab({ onStatus, darkMode = false, readOnly = fal
 
   // Группировка
   const [groupBy, setGroupBy] = useState<'none' | 'type'>('none');
+
+  // Прокрутка таблицы вниз по умолчанию (и при обновлениях данных)
+  const tableScrollRef = useRef<HTMLDivElement>(null);
 
   // Уникальные значения из тарифов
   const serviceCategories = useMemo(() => {
@@ -181,6 +184,12 @@ export default function ServicesTab({ onStatus, darkMode = false, readOnly = fal
     }
     return { count: filteredRecords.length, totalCost };
   }, [filteredRecords]);
+
+  // Прокручивать таблицу вниз по умолчанию и при каждом обновлении данных
+  useEffect(() => {
+    const el = tableScrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [displayData]);
 
   // Сохранение
   const handleSave = () => {
@@ -378,7 +387,7 @@ export default function ServicesTab({ onStatus, darkMode = false, readOnly = fal
         </div>
 
         {/* Таблица — прокручивается только она */}
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto" ref={tableScrollRef}>
           <table className="w-full text-sm">
             <thead className={`sticky top-0 z-10 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
               <tr>

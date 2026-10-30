@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useStore } from '../store';
 import { useToast } from './Toast';
 import { CarRecord, CarInBase, formatPlateDisplay as formatPlateDisplaySafe, calcDurationHours, calcAutoCost, formatNumber, formatDate, generateId, normalizePlate, isValidPlateFormat, plateFormatHint } from '../types';
@@ -42,6 +42,9 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
 
   // Группировка
   const [groupBy, setGroupBy] = useState<'none' | 'number' | 'type'>('none');
+
+  // Прокрутка таблицы вниз по умолчанию (и при обновлениях данных)
+  const tableScrollRef = useRef<HTMLDivElement>(null);
 
   // База автомобилей: выбранный автомобиль и отфильтрованный список для подсказок
   const selectedCar = useMemo(
@@ -221,6 +224,12 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
     }
     return { count: filteredRecords.length, totalHours, totalCost };
   }, [filteredRecords]);
+
+  // Прокручивать таблицу вниз по умолчанию и при каждом обновлении данных
+  useEffect(() => {
+    const el = tableScrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [displayData]);
 
   // Сохранение
   const handleSave = () => {
@@ -544,7 +553,7 @@ export default function AutoTab({ onStatus, darkMode = false, readOnly = false }
         </div>
 
         {/* Таблица — прокручивается только она */}
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto" ref={tableScrollRef}>
           <table className="w-full text-sm">
             <thead className={`sticky top-0 z-10 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
               <tr>
