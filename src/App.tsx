@@ -13,10 +13,12 @@ import {
   getCurrentUser, 
   logout, 
   verifyToken,
+  getLockInfo,
   startActivityTracking,
   stopActivityTracking,
   setWarningCallback,
   setReleaseCallback,
+  setLockLostCallback,
   checkLockStatus,
   updateActivity
 } from './api';
@@ -42,13 +44,34 @@ function AppContent() {
   const [showInactivityWarning, setShowInactivityWarning] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Проверка авторизации при загрузке
+  // Проверка авторизации и блокировки при загрузке.
+  // Алгоритм: читаем lock.json ДО показа основного экрана. Если там указан
+  // другой пользователь — сразу режим только для чтения (без «своего» окна).
   useEffect(() => {
     const checkAuth = async () => {
       const user = await verifyToken();
+
+      let lockStatus: { locked: boolean; lockInfo: any } = { locked: false, lockInfo: null };
+      try {
+        lockStatus = await getLockInfo();
+      } catch (e) {
+        console.error('Не удалось проверить блокировку при входе:', e);
+      }
+      const otherLock = lockStatus.locked && lockStatus.lockInfo;
+
       if (user) {
         setIsAuthenticatedUser(true);
-        setReadOnly(false);
+        if (otherLock && lockStatus.lockInfo.userId !== user.id) {
+          setReadOnly(true);
+          toast.error(`🔒 Файл заблокирован пользователем: ${lockStatus.lockInfo.computerName}. Режим только для чтения.`);
+        } else {
+          setReadOnly(false);
+        }
+      } else if (otherLock) {
+        // Гостя пускаем только в просмотр — без авторизации работать нельзя,
+        // и уж тем более нельзя давать ему создавать/снимать блокировку.
+        setReadOnly(true);
+        setIsAuthenticatedUser(false);
       } else {
         setIsAuthenticatedUser(false);
         setReadOnly(false);
@@ -58,7 +81,7 @@ function AppContent() {
     checkAuth();
   }, []);
 
-  // Проверка блокировки файла другим пользователем
+  // Проверка блокировки файла другим пользователем + реакция на потерю своей
   useEffect(() => {
     if (isLocked && lockInfo && isAuthenticatedUser && !readOnly) {
       const currentUser = getCurrentUser();
@@ -69,6 +92,23 @@ function AppContent() {
       }
     }
   }, [isLocked, lockInfo, isAuthenticatedUser, readOnly]);
+
+  // Если фоновое продление не смогло продлить нашу блокировку (она истекла
+  // или её занял другой) — немедленно переходим в режим только для чтения,
+  // чтобы не писать данные поверх чужой сессии.
+  useEffect(() => {
+    setLockLostCallback(async () => {
+      const status = await checkLockStatus();
+      const currentUser = getCurrentUser();
+      if (status.locked && status.lockInfo && currentUser && status.lockInfo.userId !== currentUser.id) {
+        setReadOnly(true);
+        toast.error(`🔒 Ваша блокировка перехвачена пользователем: ${status.lockInfo.computerName}. Включён режим только для чтения.`);
+      } else {
+        setReadOnly(true);
+        toast.warning('⚠️ Блокировка больше не активна — включён режим только для чтения. Сохраните изменения и войдите заново.');
+      }
+    });
+  }, []);
 
   // Отслеживание активности пользователя
   useEffect(() => {

@@ -125,54 +125,146 @@ async function writeData(data) {
   }
 }
 
-// Проверка блокировки
-async function checkLock() {
+// Простейшая очередь, чтобы операции «проверить и записать» выполнялись атомарно
+// (иначе два параллельных запроса могут перезаписать блокировку друг друга).
+let lockQueue = Promise.resolve();
+function withLockQueue(fn) {
+  const result = lockQueue.then(fn, fn);
+  lockQueue = result.then(() => undefined, () => undefined);
+  return result;
+}
+
+const LOCK_TTL_MS = 5 * 60 * 1000; // блокировка живёт 5 минут без продления
+
+// Низкоуровневое чтение файла блокировки.
+// ВАЖНО: пустой/битый файл НЕ считается свободной блокировкой — такие случаи
+// раньше приводили к тому, что lock.json «исчезал», и любой пользователь мог
+// захватить чужую блокировку. Теперь битый файл сохраняем как *.corrupt-...
+// и считаем блокировку отсутствующей только осознанно, с логом в консоль.
+async function readLockFileRaw() {
+  let raw;
   try {
-    await fs.access(LOCK_FILE);
-    const lockData = await fs.readFile(LOCK_FILE, 'utf-8');
-    const lock = JSON.parse(lockData);
-    
-    // Проверяем, не истекла ли блокировка
-    if (new Date(lock.expiresAt) < new Date()) {
-      console.log('⏰ Блокировка истекла, удаляю...');
-      await fs.unlink(LOCK_FILE);
-      return null;
-    }
-    
-    return lock;
+    raw = await fs.readFile(LOCK_FILE, 'utf-8');
+  } catch (error) {
+    if (error.code === 'ENOENT') return { status: 'missing' };
+    throw error;
+  }
+
+  if (!raw.trim()) {
+    console.warn('⚠️ Файл lock.json пуст — сохраняю копию и считаю блокировку отсутствующей');
+    try {
+      await fs.rename(LOCK_FILE, `${LOCK_FILE}.empty-${Date.now()}`);
+    } catch (e) { /* best effort */ }
+    return { status: 'corrupt', reason: 'empty' };
+  }
+
+  let lock;
+  try {
+    lock = JSON.parse(raw);
   } catch {
+    console.error('❌ Файл lock.json повреждён (невалидный JSON) — сохраняю копию');
+    try {
+      await fs.rename(LOCK_FILE, `${LOCK_FILE}.corrupt-${Date.now()}`);
+    } catch (e) { /* best effort */ }
+    return { status: 'corrupt', reason: 'invalid-json' };
+  }
+
+  if (!lock || typeof lock.userId !== 'string') {
+    console.error('❌ В lock.json нет поля userId — файл повреждён, сохраняю копию');
+    try {
+      await fs.rename(LOCK_FILE, `${LOCK_FILE}.corrupt-${Date.now()}`);
+    } catch (e) { /* best effort */ }
+    return { status: 'corrupt', reason: 'no-user-id' };
+  }
+
+  return { status: 'ok', lock };
+}
+
+// Проверка блокировки (не трогает файлов, кроме удаления явно просроченных)
+async function checkLock() {
+  const res = await readLockFileRaw();
+  if (res.status !== 'ok') return null;
+
+  const expiresAt = new Date(res.lock.expiresAt);
+  // Если expiresAt повреждён — считаем блокировку бессрочной, чтобы случайно
+  // не отдать чужие данные первому подключившемуся.
+  if (!isNaN(expiresAt.getTime()) && expiresAt < new Date()) {
+    console.log('⏰ Блокировка истекла, удаляю...');
+    await fs.unlink(LOCK_FILE).catch(() => {});
     return null;
   }
+
+  return res.lock;
 }
 
-// Установка блокировки
-async function setLock(userId, computerName) {
-  const existingLock = await checkLock();
-  
-  if (existingLock && existingLock.userId !== userId) {
-    console.log('🔒 Попытка блокировки отклонена - уже заблокировано');
-    return false;
-  }
-  
-  const lock = {
-    userId,
-    computerName,
-    lockedAt: new Date().toISOString(),
-    expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString()
-  };
-  
-  await fs.writeFile(LOCK_FILE, JSON.stringify(lock, null, 2));
-  console.log(`🔒 Блокировка установлена: ${computerName} (${userId})`);
-  return true;
+// Установка блокировки. Возвращает true/false либо строку 'conflict',
+// если за время проверки блокировку успел занять другой пользователь.
+// allowTakeover=true — это stale-запрос (продление/освобождение «своей»
+// блокировки): создавать блокировку заново в этом случае нельзя.
+async function acquireLock(userId, computerName, { allowTakeover = false } = {}) {
+  return withLockQueue(async () => {
+    const res = await readLockFileRaw();
+
+    if (res.status === 'ok') {
+      const existing = res.lock;
+      const expiresAt = new Date(existing.expiresAt);
+      const expired = !isNaN(expiresAt.getTime()) && expiresAt < new Date();
+
+      // Чужая НЕпросроченная блокировка — отказ (или 'conflict', если это
+      // устаревший запрос, пришедший после того, как файл занял другой).
+      if (!expired && existing.userId !== userId) {
+        console.log('🔒 Попытка блокировки отклонена - уже заблокировано другим пользователем');
+        return allowTakeover ? 'conflict' : false;
+      }
+    } else if (allowTakeover) {
+      // Это stale-запрос продления/освобождения: на момент проверки блокировка
+      // принадлежала нам, а сейчас файла нет или он повреждён. Не создаём её заново.
+      return 'conflict';
+    }
+
+    const lock = {
+      userId,
+      computerName,
+      lockedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + LOCK_TTL_MS).toISOString()
+    };
+
+    // wx = создать только если файла нет. Если гонка всё же случилась —
+    // перечитаем и честно откажем вместо перезаписи чужой блокировки.
+    try {
+      await fs.writeFile(LOCK_FILE, JSON.stringify(lock, null, 2), { flag: 'wx' });
+    } catch (error) {
+      if (error.code === 'EEXIST') {
+        const current = await readLockFileRaw();
+        if (current.status === 'ok' && current.lock.userId !== userId) {
+          console.log('🔒 Гонка при установке блокировки - победил другой пользователь');
+          return 'conflict';
+        }
+        await fs.writeFile(LOCK_FILE, JSON.stringify(lock, null, 2));
+      } else {
+        throw error;
+      }
+    }
+
+    console.log(`🔒 Блокировка установлена: ${computerName} (${userId})`);
+    return true;
+  });
 }
 
-// Освобождение блокировки
+// Освобождение блокировки (только своим владельцем)
 async function releaseLock(userId) {
-  const lock = await checkLock();
-  if (lock && lock.userId === userId) {
-    await fs.unlink(LOCK_FILE);
-    console.log('🔓 Блокировка освобождена');
-  }
+  return withLockQueue(async () => {
+    const lock = await checkLock();
+    if (lock && lock.userId === userId) {
+      await fs.unlink(LOCK_FILE).catch(() => {});
+      console.log('🔓 Блокировка освобождена');
+      return true;
+    }
+    if (lock) {
+      console.log('🚫 Попытка освободить чужую блокировку отклонена');
+    }
+    return false;
+  });
 }
 
 // ==================== API Endpoints ====================
@@ -261,13 +353,23 @@ app.post('/api/auth/logout', async (req, res) => {
   const { token } = req.body;
   console.log(`🚪 POST /api/auth/logout: ${token}`);
   
-  // Освобождаем блокировку если она есть
+  // Освобождаем блокировку если она есть (и она принадлежит этому же пользователю)
   if (token) {
     await releaseLock(token);
   }
   
   res.json({ success: true });
 });
+
+// Проверка токена по заголовку Authorization: Bearer <token>.
+// Используется защищёнными эндпоинтами блокировки и данных.
+async function verifyUserByToken(headerValue) {
+  if (!headerValue) return null;
+  const token = headerValue.startsWith('Bearer ') ? headerValue.slice(7).trim() : headerValue.trim();
+  if (!token) return null;
+  const users = await readUsers();
+  return users.find(u => u.id === token) || null;
+}
 
 // Получить список пользователей (для отображения)
 app.get('/api/auth/users', async (req, res) => {
@@ -323,10 +425,23 @@ app.post('/api/data', async (req, res) => {
     console.log('❌ Ошибка: userId и computerName обязательны');
     return res.status(400).json({ error: 'userId и computerName обязательны' });
   }
+
+  // Сохранять данные может только авторизованный пользователь.
+  // Это закрывает дыру, когда клиент присылал анонимный id из localStorage
+  // и «перехватывал» чужую блокировку.
+  const authUser = await verifyUserByToken(req.headers.authorization);
+  if (!authUser) {
+    console.log('🚫 POST /api/data без валидного токена — отклонено');
+    return res.status(401).json({ error: 'Требуется авторизация' });
+  }
+  if (authUser.id !== userId) {
+    console.log(`🚫 userId в запросе (${userId}) не совпадает с токеном (${authUser.id})`);
+    return res.status(403).json({ error: 'Несовпадение пользователя и токена' });
+  }
   
-  // Пытаемся установить блокировку
-  const locked = await setLock(userId, computerName);
-  if (!locked) {
+  // Пытаемся установить блокировку (атомарно: проверка + запись под очередью)
+  const locked = await acquireLock(authUser.id, computerName);
+  if (locked !== true) {
     const existingLock = await checkLock();
     console.log('🔒 Данные заблокированы другим пользователем');
     return res.status(403).json({ 
@@ -360,6 +475,15 @@ app.post('/api/lock/release', async (req, res) => {
     console.log('❌ userId не указан в запросе');
     return res.status(400).json({ error: 'userId обязателен' });
   }
+
+  // Сверяем с токеном: без него освобождение возможно только если userId
+  // действительно является id зарегистрированного пользователя (см. releaseLock —
+  // чужую блокировка всё равно не снимется).
+  const authUser = await verifyUserByToken(req.headers.authorization);
+  if (authUser && authUser.id !== userId) {
+    console.log(`🚫 Попытка снять чужую блокировку: userId=${userId}, токен=${authUser.id}`);
+    return res.status(403).json({ error: 'Несовпадение пользователя и токена' });
+  }
   
   console.log(`🔓 Освобождаю блокировку для userId: ${userId}`);
   await releaseLock(userId);
@@ -373,15 +497,40 @@ app.post('/api/lock/extend', async (req, res) => {
   if (!userId) {
     return res.status(400).json({ error: 'userId обязателен' });
   }
+
+  const authUser = await verifyUserByToken(req.headers.authorization);
+  if (authUser && authUser.id !== userId) {
+    return res.status(403).json({ error: 'Несовпадение пользователя и токена' });
+  }
   
-  const lock = await checkLock();
-  if (lock && lock.userId === userId) {
-    lock.expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-    await fs.writeFile(LOCK_FILE, JSON.stringify(lock, null, 2));
-    console.log('⏰ Блокировка продлена');
+  const result = await withLockQueue(async () => {
+    const lock = await checkLock();
+    if (lock && lock.userId === userId) {
+      // Перезаписываем ТОЛЬКО expiresAt, остальное берём из файла,
+      // чтобы нельзя было «продлением» подменить владельца блокировки.
+      lock.expiresAt = new Date(Date.now() + LOCK_TTL_MS).toISOString();
+      await fs.writeFile(LOCK_FILE, JSON.stringify(lock, null, 2));
+      console.log('⏰ Блокировка продлена');
+      return { ok: true };
+    }
+    if (!lock) {
+      // Файл уже удалили (истёк/закрыли вкладку) или он повреждён.
+      // НЕ создаём блокировку заново — иначе можно перехватить её у того,
+      // кто успел занять файл между проверками.
+      return { ok: false, reason: 'lost' };
+    }
+    return { ok: false, reason: 'other', lock };
+  });
+
+  if (result.ok) {
     res.json({ success: true });
+  } else if (result.reason === 'lost') {
+    res.status(410).json({ error: 'Блокировка больше не активна' });
   } else {
-    res.status(403).json({ error: 'Блокировка не найдена или принадлежит другому пользователю' });
+    res.status(403).json({ 
+      error: 'Блокировка принадлежит другому пользователю',
+      lockInfo: result.lock
+    });
   }
 });
 

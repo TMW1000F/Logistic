@@ -167,6 +167,21 @@ export async function verifyToken(): Promise<UserInfo | null> {
 
 // ==================== API функции ====================
 
+// Все запросы, меняющие состояние блокировки/данных, отправляются с токеном —
+// сервер сверяет его с userId и не даёт анониму (или другому пользователю)
+// захватить/снять чужую блокировку.
+function authHeaders(): Record<string, string> {
+  const token = localStorage.getItem('authToken');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+// Текущий пользователь для блокировки: только авторизованный (id из users.json).
+// Анонимный id из localStorage больше не используется — именно он позволял
+// «подключиться и прописать свою блокировку» поверх чужой.
+function getAuthUserId(): string | null {
+  return getCurrentUser()?.id ?? null;
+}
+
 // Получить все данные
 export async function fetchData(): Promise<AppState> {
   try {
@@ -194,7 +209,10 @@ export async function updateData(data: AppState, userIdParam?: string, computerN
     const currentUser = getCurrentUser();
     const response = await fetch(`${API_BASE}/data`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders()
+      },
       body: JSON.stringify({ 
         userId: userIdParam || currentUser?.id || userId, 
         computerName: computerNameParam || currentUser?.displayName || getComputerName(), 
@@ -202,7 +220,7 @@ export async function updateData(data: AppState, userIdParam?: string, computerN
       })
     });
     
-    const result = await response.json();
+    const result = await response.json().catch(() => ({}));
     
     if (!response.ok) {
       return { success: false, lockInfo: result.lockInfo };
@@ -230,11 +248,16 @@ export async function getLockInfo(): Promise<{ locked: boolean; lockInfo: LockIn
 // Освободить блокировку
 export async function releaseLock(): Promise<void> {
   try {
-    const currentUser = getCurrentUser();
-    const authUserId = currentUser?.id || userId;
+    const authUserId = getAuthUserId();
+    // Неавторизованный клиент не может снимать блокировку — иначе закрытие
+    // вкладки гостем/другим браузером очищало чужой lock.json.
+    if (!authUserId) return;
     await fetch(`${API_BASE}/lock/release`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders()
+      },
       body: JSON.stringify({ userId: authUserId }),
       keepalive: true // Важно! Позволяет запросу завершиться даже при закрытии страницы
     });
@@ -244,15 +267,24 @@ export async function releaseLock(): Promise<void> {
 }
 
 // Продлить блокировку
-export async function extendLock(): Promise<void> {
+// Возвращает true, если блокировка успешно продлена; false — если сервер
+// ответил ошибкой (например, блокировка уже истекла или её занял другой).
+export async function extendLock(): Promise<boolean> {
   try {
-    await fetch(`${API_BASE}/lock/extend`, {
+    const authUserId = getAuthUserId();
+    if (!authUserId) return false;
+    const response = await fetch(`${API_BASE}/lock/extend`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId })
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders()
+      },
+      body: JSON.stringify({ userId: authUserId })
     });
+    return response.ok;
   } catch (error) {
     console.error('Ошибка extendLock:', error);
+    return false;
   }
 }
 
@@ -350,15 +382,29 @@ export function stopActivityTracking() {
   }
 }
 
-// Автоматическое продление блокировки каждые 10 минут
+// Автоматическое продление блокировки каждые 2 минуты.
+// Важно: интервал ДОЛЖЕН быть меньше TTL блокировки на сервере (5 минут),
+// иначе блокировка будет истекать сама, lock.json удалится, и следующий
+// пользователь получит «пустой файл» и сможет занять его.
 let lockInterval: ReturnType<typeof setInterval> | null = null;
+let onLockLostCallback: (() => void) | null = null;
+
+// Вызывается, когда фоновое продление обнаружило, что наша блокировка
+// исчезла/перехвачена — приложение может показать режим только для чтения.
+export function setLockLostCallback(callback: () => void) {
+  onLockLostCallback = callback;
+}
 
 export function startLockExtension() {
   if (lockInterval) return;
   
-  lockInterval = setInterval(() => {
-    extendLock();
-  }, 10 * 60 * 1000); // Каждые 10 минут
+  lockInterval = setInterval(async () => {
+    const ok = await extendLock();
+    if (!ok && onLockLostCallback) {
+      stopLockExtension();
+      onLockLostCallback();
+    }
+  }, 2 * 60 * 1000); // Каждые 2 минуты (TTL на сервере — 5 минут)
 }
 
 export function stopLockExtension() {
@@ -368,50 +414,11 @@ export function stopLockExtension() {
   }
 }
 
-// Освобождение блокировки при закрытии страницы
-export function setupLockRelease() {
-  let released = false;
-  
-  // Используем sendBeacon для надёжной отправки при закрытии страницы
-  const sendReleaseBeacon = () => {
-    if (released) return;
-    released = true;
-    
-    const currentUser = getCurrentUser();
-    const authUserId = currentUser?.id || userId;
-    
-    // Используем абсолютный URL — sendBeacon не работает с относительными путями
-    const url = `${window.location.origin}${API_BASE}/lock/release`;
-    
-    try {
-      // sendBeacon гарантирует доставку даже при закрытии страницы
-      const blob = new Blob([JSON.stringify({ userId: authUserId })], { type: 'application/json' });
-      navigator.sendBeacon(url, blob);
-    } catch (e) {
-      // Fallback: fetch с keepalive
-      try {
-        fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: authUserId }),
-          keepalive: true
-        });
-      } catch (e2) {
-        console.error('Не удалось освободить блокировку:', e2);
-      }
-    }
-  };
-
-  // Событие перед закрытием вкладки
-  window.addEventListener('beforeunload', sendReleaseBeacon);
-  
-  // Событие при скрытии страницы (более надёжное)
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') {
-      sendReleaseBeacon();
-    }
-  });
-  
-  // Событие при выгрузке страницы
-  window.addEventListener('pagehide', sendReleaseBeacon);
-}
+// ВАЖНО: освобождение блокировки при закрытии страницы НЕ настраивается.
+// Раньше сюда вешались beforeunload/pagehide/visibilitychange с sendBeacon,
+// и любой клиент (включая гостя или вторую вкладку, которая просто «свернулась»)
+// мог прислать запрос на снятие блокировки — так lock.json очищался,
+// а следующий пользователь захватывал «пустую» блокировку.
+// Блокировка снимается только явно: выход из системы (logout) или
+// освобождение владельцем через POST /api/lock/release; иначе она сама
+// истекает по TTL на сервере.

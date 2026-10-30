@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode, useState } from 'react';
 import { AppState, CarRecord, ServiceRecord, Tariff } from './types';
-import { fetchData, updateData, startLockExtension, stopLockExtension, setupLockRelease, getLockInfo, getCurrentUser } from './api';
+import { fetchData, updateData, startLockExtension, stopLockExtension, getLockInfo, getCurrentUser } from './api';
 
 // ==================== Начальное состояние ====================
 const initialState: AppState = {
@@ -103,7 +103,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
     
     loadFromServer();
-    setupLockRelease();
   }, []);
 
   // Периодическая проверка статуса блокировки
@@ -149,7 +148,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       try {
         const currentUser = getCurrentUser();
         
-        // Если пользователь не авторизован, НЕ устанавливаем блокировку
+        // Если пользователь не авторизован, НЕ сохраняем на сервер и
+        // НЕ устанавливаем блокировку. Раньше сюда мог попасть запрос с
+        // анонимным userId — так появлялась возможность «перехватить»
+        // чужую блокировку или перезаписать lock.json.
         if (!currentUser) {
           console.log('Пользователь не авторизован, пропускаем синхронизацию с сервером');
           // Сохраняем только в localStorage как backup
@@ -161,6 +163,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const authUserId = currentUser.id;
         const result = await updateData(state, authUserId, displayName);
         if (result.success) {
+          // Продлеваем блокировку чаще, чем истекает её TTL (5 мин):
+          // иначе файл успевал удалиться и следующий пользователь видел «пустой» lock.json.
           startLockExtension();
           setIsLocked(false);
           setLockInfo(null);
@@ -201,7 +205,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Функция для принудительной синхронизации
   const syncToServer = async (): Promise<boolean> => {
     try {
-      const result = await updateData(state);
+      const currentUser = getCurrentUser();
+      // Без авторизации на сервер не пишем: анонимный клиент не должен
+      // иметь возможности создать/перезаписать блокировку.
+      if (!currentUser) return false;
+      const result = await updateData(state, currentUser.id, currentUser.displayName);
       if (result.success) {
         setIsLocked(false);
         setLockInfo(null);
