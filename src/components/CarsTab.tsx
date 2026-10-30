@@ -32,6 +32,16 @@ export default function CarsTab({ onStatus, darkMode = false, readOnly = false }
     return [...new Set(state.tariffs.filter(t => t.type === 'auto').map(t => t.carrier))].sort();
   }, [state.tariffs]);
 
+  // Перевозчики доступны только в привязке к выбранному типу ТС (сочетание должно быть в тарифах)
+  const availableCarriers = useMemo(() => {
+    if (!carType) return autoCarriers;
+    return [...new Set(
+      state.tariffs
+        .filter(t => t.type === 'auto' && t.category === carType)
+        .map(t => t.carrier)
+    )].sort();
+  }, [state.tariffs, carType, autoCarriers]);
+
   // Отсортированная и отфильтрованная база
   const filteredCars = useMemo(() => {
     const cars = [...state.cars].sort((a, b) => a.display.localeCompare(b.display, 'ru'));
@@ -84,6 +94,14 @@ export default function CarsTab({ onStatus, darkMode = false, readOnly = false }
     }
     if (!carrier) {
       toast.warning('Выберите перевозчика (из тарифов)');
+      return;
+    }
+    // Обязательно: сочетание «Тип ТС + Перевозчик» должно существовать в тарифах (тип auto)
+    const hasTariffCombo = state.tariffs.some(
+      t => t.type === 'auto' && t.category === carType && t.carrier === carrier
+    );
+    if (!hasTariffCombo) {
+      toast.error(`В тарифах нет сочетания «${carType}» + «${carrier}». Добавьте такой тариф или выберите другую пару.`);
       return;
     }
 
@@ -147,7 +165,13 @@ export default function CarsTab({ onStatus, darkMode = false, readOnly = false }
             />
             <select
               value={carType}
-              onChange={e => setCarType(e.target.value)}
+              onChange={e => {
+                setCarType(e.target.value);
+                // Если выбранный перевозчик не сочетается с новым типом ТС в тарифах — сбрасываем его
+                if (carrier && !state.tariffs.some(t => t.type === 'auto' && t.category === e.target.value && t.carrier === carrier)) {
+                  setCarrier('');
+                }
+              }}
               title="Тип ТС (из тарифов)"
               className={`${inputCls} min-w-[140px]`}
             >
@@ -157,11 +181,11 @@ export default function CarsTab({ onStatus, darkMode = false, readOnly = false }
             <select
               value={carrier}
               onChange={e => setCarrier(e.target.value)}
-              title="Перевозчик (из тарифов)"
+              title={carType ? `Перевозчики для типа «${carType}» (из тарифов)` : 'Перевозчик (из тарифов)'}
               className={`${inputCls} min-w-[140px]`}
             >
               <option value="">Перевозчик *</option>
-              {autoCarriers.map(c => <option key={c} value={c}>{c}</option>)}
+              {availableCarriers.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
             <button
               type="submit"

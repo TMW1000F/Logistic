@@ -571,17 +571,20 @@ function AppContent() {
               {isLoading && (
                 <div className="text-yellow-300">⏳ Загрузка...</div>
               )}
-              {isLocked && lockInfo && currentUser && (
-                <div className={`flex items-center gap-1 justify-end ${lockInfo.userId === currentUser.id ? 'text-green-300' : 'text-red-300'}`}>
-                  <Lock size={12} />
-                  <span>
-                    {lockInfo.userId === currentUser.id 
-                      ? 'Заблокировано: Вами' 
-                      : `Заблокировано: ${lockInfo.computerName}`
-                    }
-                  </span>
-                </div>
-              )}
+              {/* Строка блокировки: место зарезервировано всегда, чтобы шапка не «прыгала» */}
+              <div
+                className={`flex items-center gap-1 justify-end min-h-[16px] ${isLocked && lockInfo && currentUser ? (lockInfo.userId === currentUser.id ? 'text-green-300' : 'text-red-300') : 'invisible'}`}
+                aria-hidden={!isLocked || !lockInfo || !currentUser}
+              >
+                <Lock size={12} style={{ flexShrink: 0 }} />
+                <span className="max-w-[240px] truncate" title={isLocked && lockInfo ? `Заблокировано: ${lockInfo.userId === currentUser?.id ? 'Вами' : lockInfo.computerName}` : undefined}>
+                  {isLocked && lockInfo && currentUser
+                    ? (lockInfo.userId === currentUser.id
+                        ? 'Заблокировано: Вами'
+                        : `Заблокировано: ${lockInfo.computerName}`)
+                    : '\u00a0'}
+                </span>
+              </div>
             </div>
             <button
               onClick={() => setShowHelp(true)}
