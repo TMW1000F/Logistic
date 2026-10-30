@@ -15,8 +15,11 @@ import {
   logout, 
   verifyToken,
   getLockInfo,
+  releaseLock,
   startActivityTracking,
   stopActivityTracking,
+  startLockExtension,
+  stopLockExtension,
   setWarningCallback,
   setReleaseCallback,
   setLockLostCallback,
@@ -32,18 +35,22 @@ const COMPANY_NAME = "АО «Логистик-Центр»";
 // Раньше одинаковые сообщения «🔒 Файл заблокирован...» дублировались в трёх
 // местах (полинг store, эффект в App, callback потери блокировки) с мелкими
 // расхождениями в формулировках — теперь один источник правды.
-function useLockState(readOnly: boolean, setReadOnly: (v: boolean) => void) {
+// ВАЖНО: хук реагирует ТОЛЬКО если мы уже внутри приложения (viewMode !== 'none').
+// Иначе сразу после выхода из системы (viewMode='none') залипший lock.json от
+// предыдущего пользователя мгновенно возвращал бы нас в read-only — именно так
+// выглядел баг «нажал Выход → через секунду сам вошёл как гость».
+function useLockState(viewMode: 'none' | 'edit' | 'read', enterReadOnly: () => void) {
   const { isLocked, lockInfo } = useStore();
   const toast = useToast();
   useEffect(() => {
-    if (!readOnly && isLocked && lockInfo) {
-      const currentUser = getCurrentUser();
-      if (!currentUser || lockInfo.userId !== currentUser.id) {
-        setReadOnly(true);
-        toast.error(`🔒 Файл заблокирован пользователем: ${lockInfo.computerName}. Режим только для чтения.`);
-      }
+    if (viewMode !== 'edit') return; // не трогаем состояние на экране логина и в просмотре
+    if (!isLocked || !lockInfo) return;
+    const currentUser = getCurrentUser();
+    if (!currentUser || lockInfo.userId !== currentUser.id) {
+      enterReadOnly();
+      toast.error(`🔒 Файл заблокирован пользователем: ${lockInfo.computerName}. Режим только для чтения.`);
     }
-  }, [isLocked, lockInfo, readOnly]);
+  }, [isLocked, lockInfo, viewMode]);
 }
 
 function AppContent() {
@@ -57,11 +64,18 @@ function AppContent() {
     return saved === 'true';
   });
   const [isAuthChecked, setIsAuthChecked] = useState(false);
-  const [isAuthenticatedUser, setIsAuthenticatedUser] = useState(false);
-  const [readOnly, setReadOnly] = useState(false);
+  // Единый флаг «мы уже смотрим данные»: true, когда пользователь авторизован
+  // ИЛИ включён режим только просмотра. Пока он false — показываем экран
+  // авторизации. Раньше код был разбросан по нескольким useState-сеттерам, и
+  // выход из системы иногда приводил к авто-входу в режим просмотра (см.
+  // handleLogout / handleAuthSuccess).
+  const [viewMode, setViewMode] = useState<'none' | 'edit' | 'read'>('none');
+  const isAuthenticatedUser = viewMode === 'edit';
+  const readOnly = viewMode === 'read';
+  const inApp = viewMode !== 'none';
   const [showInactivityWarning, setShowInactivityWarning] = useState(false);
 
-  useLockState(readOnly, setReadOnly);
+  useLockState(viewMode, () => setViewMode('read'));
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Проверка авторизации и блокировки при загрузке.
@@ -69,7 +83,22 @@ function AppContent() {
   // другой пользователь — сразу режим только для чтения (без «своего» окна).
   useEffect(() => {
     const checkAuth = async () => {
-      const user = await verifyToken();
+      let user: ReturnType<typeof getCurrentUser> | null = null;
+      try {
+        user = await verifyToken();
+      } catch (e) {
+        console.error('Не удалось проверить токен:', e);
+      }
+
+      if (user) {
+        // Авторизованный вход всегда даёт полноценный доступ. Блокировку
+        // другого пользователя нам покажет store-полинг (useLockState),
+        // а не это одноразовое чтение lock.json, которое может быть
+        // «залипшим» из-за гонки с acquireLock на сервере.
+        setViewMode('edit');
+        setIsAuthChecked(true);
+        return;
+      }
 
       let lockStatus: { locked: boolean; lockInfo: any } = { locked: false, lockInfo: null };
       try {
@@ -79,22 +108,12 @@ function AppContent() {
       }
       const otherLock = lockStatus.locked && lockStatus.lockInfo;
 
-      if (user) {
-        setIsAuthenticatedUser(true);
-        if (otherLock && lockStatus.lockInfo.userId !== user.id) {
-          setReadOnly(true);
-          toast.error(`🔒 Файл заблокирован пользователем: ${lockStatus.lockInfo.computerName}. Режим только для чтения.`);
-        } else {
-          setReadOnly(false);
-        }
-      } else if (otherLock) {
+      if (otherLock) {
         // Гостя пускаем только в просмотр — без авторизации работать нельзя,
         // и уж тем более нельзя давать ему создавать/снимать блокировку.
-        setReadOnly(true);
-        setIsAuthenticatedUser(false);
+        setViewMode('read');
       } else {
-        setIsAuthenticatedUser(false);
-        setReadOnly(false);
+        setViewMode('none');
       }
       setIsAuthChecked(true);
     };
@@ -110,10 +129,10 @@ function AppContent() {
       const status = await checkLockStatus();
       const currentUser = getCurrentUser();
       if (status.locked && status.lockInfo && currentUser && status.lockInfo.userId !== currentUser.id) {
-        setReadOnly(true);
+        setViewMode('read');
         toast.error(`🔒 Файл заблокирован пользователем: ${status.lockInfo.computerName}. Режим только для чтения.`);
       } else {
-        setReadOnly(true);
+        setViewMode('read');
         toast.warning('⚠️ Блокировка больше не активна — включён режим только для чтения. Сохраните изменения и войдите заново.');
       }
     });
@@ -229,13 +248,47 @@ function AppContent() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [state]);
 
-  // Выход из системы
+  // Выход из системы: чистим токен/пользователя, снимаем свою блокировку на
+  // сервере и возвращаемся на экран авторизации. ВАЖНО: раньше здесь стояло
+  // setIsAuthenticatedUser(false) + setReadOnly(false), но store-полинг мог в
+  // этот же момент принести «залипшую» блокировку (другой пользователь уже
+  // писал данные) — и useLockState мгновенно переключал нас обратно в read-only,
+  // показывая данные как «неавторизованному гостю». Теперь выход — это всегда
+  // viewMode='none' (экран логина), а не автовход в просмотр.
   const handleLogout = async () => {
     if (!confirm('Выйти из системы?')) return;
+
+    // Явно освобождаем СВОЮ блокировку ДО выхода (logout на сервере делает
+    // releaseLock по userId). Иначе lock.json остаётся висеть до TTL (5 мин),
+    // и следующий зашедший увидит чужую «призрачную» блокировку.
+    try {
+      if (getCurrentUser()) {
+        await releaseLock();
+      }
+    } catch (e) {
+      console.error('Не удалось снять блокировку при выходе:', e);
+    }
+
     await logout();
-    setIsAuthenticatedUser(false);
-    setReadOnly(false);
+    stopActivityTracking();
+    stopLockExtension();
+    setShowInactivityWarning(false);
+    setViewMode('none');
     toast.info('Вы вышли из системы');
+  };
+
+  const handleAuthSuccess = () => {
+    // При успешном входе запускаем фоновое продление блокировки. Раньше оно
+    // стартовало только после первого POST /api/data (см. store.tsx), поэтому
+    // если новый пользователь ещё ничего не сохранял, его блокировка вообще
+    // не поддерживалась и могла истечь/исчезнуть — отсюда ощущение, что
+    // «блокировка не сразу подхватывается».
+    startLockExtension();
+    setViewMode('edit');
+  };
+
+  const handleReadOnlyMode = () => {
+    setViewMode('read');
   };
 
   // Сохранение в файл (TSV формат)
@@ -466,18 +519,12 @@ function AppContent() {
     );
   }
 
-  // Если пользователь не авторизован и не в режиме просмотра - показываем экран авторизации
-  if (!isAuthenticatedUser && !readOnly) {
+  // Если не авторизованы и не в режиме просмотра — показываем экран авторизации.
+  if (!inApp) {
     return (
       <AuthScreen 
-        onAuthSuccess={() => {
-          setIsAuthenticatedUser(true);
-          setReadOnly(false);
-        }}
-        onReadOnlyMode={() => {
-          setReadOnly(true);
-          setIsAuthenticatedUser(false);
-        }}
+        onAuthSuccess={handleAuthSuccess}
+        onReadOnlyMode={handleReadOnlyMode}
         darkMode={darkMode}
       />
     );

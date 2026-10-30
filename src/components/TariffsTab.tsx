@@ -252,7 +252,12 @@ export default function TariffsTab({ darkMode = false, readOnly = false }: Props
                   <th className={`px-2 py-2 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Компания</th>
                   <th className={`px-2 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Цена</th>
                   {tariffType === 'service' && <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Тип оплаты</th>}
-                  {!readOnly && <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>⚙️</th>}
+                  {/* Колонка действий: в режиме только чтения скрываем кнопки, но саму
+                      колонку оставляем (пустым <th/>), чтобы ячейки tbody не съезжали
+                      относительно заголовков. */}
+                  <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} ${readOnly ? 'w-8' : ''}`}>
+                    {!readOnly && '⚙️'}
+                  </th>
                 </tr>
               </thead>
               <tbody>

@@ -433,7 +433,12 @@ export default function CarsTab({ darkMode = false, readOnly = false }: Props) {
                 <th className={`px-2 py-2 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Тип ТС</th>
                 <th className={`px-2 py-2 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Перевозчик</th>
                 <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Записей рейсов</th>
-                {!readOnly && <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Действия</th>}
+                {/* Колонка действий: в режиме только чтения скрываем кнопки, но саму
+                    колонку оставляем (пустым <th/>), чтобы ячейки tbody не съезжали
+                    относительно заголовков. */}
+                <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} ${readOnly ? 'w-8' : ''}`}>
+                  {!readOnly && 'Действия'}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -473,7 +478,7 @@ export default function CarsTab({ darkMode = false, readOnly = false }: Props) {
               })}
               {filteredCars.length === 0 && (
                 <tr>
-                  <td colSpan={readOnly ? 5 : 6} className={`px-4 py-8 text-center ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                  <td colSpan={6} className={`px-4 py-8 text-center ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                     {state.cars.length === 0 ? 'База автомобилей пуста — добавьте первый автомобиль' : 'Ничего не найдено'}
                   </td>
                 </tr>

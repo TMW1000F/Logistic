@@ -574,17 +574,20 @@ export default function AutoTab({ darkMode = false, readOnly = false }: Props) {
           <table className="w-full text-sm">
             <thead className={`sticky top-0 z-10 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
               <tr>
-                {!readOnly && (
+                {/* Колонка чекбоксов: в режиме только чтения скрываем сам чекбокс
+                    «выбрать все», но колонку оставляем — иначе ячейки tbody
+                    съезжают относительно заголовков. */}
                 <th className={`px-2 py-2 text-center w-8 sticky left-0 z-20 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                  <button onClick={toggleSelectAll} title="Выбрать все">
-                    {filteredRecords.length > 0 && selectedIds.size === filteredRecords.length ? (
-                      <CheckSquare size={16} className="text-blue-600" />
-                    ) : (
-                      <Square size={16} className={darkMode ? 'text-gray-500' : 'text-gray-400'} />
-                    )}
-                  </button>
+                  {!readOnly && (
+                    <button onClick={toggleSelectAll} title="Выбрать все">
+                      {filteredRecords.length > 0 && selectedIds.size === filteredRecords.length ? (
+                        <CheckSquare size={16} className="text-blue-600" />
+                      ) : (
+                        <Square size={16} className={darkMode ? 'text-gray-500' : 'text-gray-400'} />
+                      )}
+                    </button>
+                  )}
                 </th>
-                )}
                 <th className={`px-2 py-2 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>№ ТС</th>
                 <th className={`px-2 py-2 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Тип ТС</th>
                 <th className={`px-2 py-2 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Перевозчик</th>
@@ -595,7 +598,12 @@ export default function AutoTab({ darkMode = false, readOnly = false }: Props) {
                 <th className={`px-2 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Тариф</th>
                 <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Дата</th>
                 <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Коэф.</th>
-                <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>⚙️</th>
+                {/* Колонка действий: в режиме только чтения скрываем кнопки, но саму
+                    колонку оставляем (пустым <th/>), чтобы ячейки tbody не съезжали
+                    влево относительно заголовков. */}
+                <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'} ${readOnly ? 'w-8' : ''}`}>
+                  {!readOnly && '⚙️'}
+                </th>
               </tr>
             </thead>
             <tbody>
