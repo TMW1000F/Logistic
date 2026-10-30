@@ -537,20 +537,47 @@ app.post('/api/lock/extend', async (req, res) => {
 
 // ==================== Сервис: бэкапы данных (/service) ====================
 // Резервные копии data.json хранятся в папке backups/ рядом с файлом данных.
-// Доступ к эндпоинтам и самой странице — только с того же компьютера, на котором
-// запущен сервер (localhost). Страница: http://<ip-сервера>/service
+// Страница доступна по адресу http://<ip-сервера>/service из локальной сети.
 
 const BACKUP_DIR = path.join(__dirname, 'backups');
 
-function isLocalRequest(req) {
-  const ip = (req.ip || '').replace('::ffff:', '');
-  return ip === '127.0.0.1' || ip === '::1' || ip === 'localhost';
+// Приватная сеть не имеет стандартного определения; под «локальной сетью» здесь
+// понимаются частные диапазоны RFC1918 + loopback. При необходимости список можно
+// расширить переменной окружения BACKUP_ALLOWED_SUBNETS, перечислив сети в формате
+// "база/маска" через запятую, например: 192.168.77.0/255.255.255.0,10.10.0.0/255.0.0.0
+const LAN_RANGES = [
+  { mask: '255.0.0.0', base: '10.0.0.0' },        // 10.0.0.0/8
+  { mask: '255.240.0.0', base: '172.16.0.0' },    // 172.16.0.0/12
+  { mask: '255.255.0.0', base: '192.168.0.0' },   // 192.168.0.0/16
+];
+for (const entry of (process.env.BACKUP_ALLOWED_SUBNETS || '').split(',')) {
+  const [base, mask] = entry.trim().split('/');
+  if (base && mask) LAN_RANGES.push({ base, mask });
 }
 
-// Промежуточный обработчик: закрывает сервисные маршруты для удалённых хостов
+function toInt(ip) {
+  const p = ip.split('.').map(Number);
+  return ((p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3]) >>> 0;
+}
+
+function inLan(ip) {
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) return false;
+  const n = toInt(ip);
+  return LAN_RANGES.some(r => (n & toInt(r.mask)) === toInt(r.base));
+}
+
+// Доступ к сервису бэкапов: только из локальной сети (loopback + частные диапазоны)
+function isLanRequest(req) {
+  const raw = (req.ip || '').replace('::ffff:', '');
+  if (raw === '::1') return true;
+  if (raw.includes(':')) return false; // прочие IPv6 считаем внешними
+  return inLan(raw);
+}
+
+// Промежуточный обработчик: закрывает сервисные маршруты для внешних хостов
 app.use((req, res, next) => {
-  if ((req.path.startsWith('/api/backup') || req.path === '/service') && !isLocalRequest(req)) {
-    return res.status(403).json({ error: 'Доступ к сервису бэкапов возможен только с компьютера сервера' });
+  if ((req.path.startsWith('/api/backup') || req.path === '/service') && !isLanRequest(req)) {
+    return res.status(403).json({ error: 'Доступ к сервису бэкапов возможен только из локальной сети' });
   }
   next();
 });
@@ -825,10 +852,12 @@ app.delete('/api/backup/:id', async (req, res) => {
   }
 });
 
-// Страница сервиса бэкапов
-app.get('/service', (req, res) => {
+// Страница сервиса бэкапов (оба адреса: /service и /service.html)
+const sendServicePage = (req, res) => {
   res.sendFile(path.join(__dirname, 'service.html'));
-});
+};
+app.get('/service', sendServicePage);
+app.get('/service.html', sendServicePage);
 
 // Раздать статические файлы (собранный фронтенд)
 app.use(express.static(path.join(__dirname, 'dist')));
