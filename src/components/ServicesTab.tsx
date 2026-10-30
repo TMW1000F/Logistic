@@ -6,17 +6,12 @@ import { Plus, Trash2, CheckSquare, Square } from 'lucide-react';
 import SearchAndTags, { FilterTag } from './SearchAndTags';
 import { playClick } from '../sound';
 
-// Округление времени к ближайшим 0 или 30 минутам (шаг — 30 минут)
-const roundToHalfHour = (value: string): string => {
-  const m = /^(\d{1,2}):(\d{2})/.exec(value || '');
-  if (!m) return value;
-  let h = parseInt(m[1], 10);
-  const min = parseInt(m[2], 10);
-  const rounded = Math.round(min / 30) * 30;
-  if (rounded === 60) { h = (h + 1) % 24; }
-  const mm = rounded === 60 ? 0 : rounded;
-  return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-};
+// Список значений времени с шагом 30 минут: минуты только 0 и 30
+const TIME_OPTIONS: string[] = Array.from({ length: 48 }, (_, i) => {
+  const h = String(Math.floor(i / 2)).padStart(2, '0');
+  const m = i % 2 === 0 ? '00' : '30';
+  return `${h}:${m}`;
+});
 
 interface Props {
   onStatus?: (msg: string) => void;
@@ -339,11 +334,15 @@ export default function ServicesTab({ onStatus, darkMode = false, readOnly = fal
             <>
               <div>
                 <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Начало:</label>
-                <input type="time" value={arrival} onChange={e => setArrival(roundToHalfHour(e.target.value))} step="1800" className={`border rounded px-2 py-1 text-sm w-28 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                <select value={arrival} onChange={e => setArrival(e.target.value)} className={`border rounded px-2 py-1 text-sm w-28 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                  {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
               </div>
               <div>
                 <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Окончание:</label>
-                <input type="time" value={departure} onChange={e => setDeparture(roundToHalfHour(e.target.value))} step="1800" className={`border rounded px-2 py-1 text-sm w-28 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+                <select value={departure} onChange={e => setDeparture(e.target.value)} className={`border rounded px-2 py-1 text-sm w-28 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}>
+                  {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
               </div>
             </>
           )}
