@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Сервис — бэкапы данных</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    margin: 0; background: #f3f4f6; color: #111827;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 24px 16px 64px; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+  header .icon { font-size: 28px; }
+  h1 { font-size: 22px; margin: 0; }
+  .sub { color: #6b7280; font-size: 13px; margin: 4px 0 20px; }
+  .card {
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+    padding: 16px 20px; margin-bottom: 16px; box-shadow: 0 1px 2px rgba(0,0,0,.05);
+  }
+  .card h2 { font-size: 15px; margin: 0 0 10px; }
+  button {
+    font: inherit; border: 1px solid #d1d5db; background: #fff; color: #111827;
+    border-radius: 8px; padding: 7px 14px; cursor: pointer;
+  }
+  button:hover { background: #f9fafb; }
+  button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+  button.primary:hover { background: #1d4ed8; }
+  button.danger { background: #dc2626; border-color: #dc2626; color: #fff; }
+  button.danger:hover { background: #b91c1c; }
+  button.warn { background: #d97706; border-color: #d97706; color: #fff; }
+  button.warn:hover { background: #b45309; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #f0f1f3; vertical-align: middle; }
+  th { color: #6b7280; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+  tr:last-child td { border-bottom: none; }
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #4338ca; }
+  .empty { color: #9ca3af; font-size: 13px; padding: 8px 0; }
+  .row-between { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  input[type=text] {
+    font: inherit; padding: 7px 10px; border: 1px solid #d1d5db; border-radius: 8px; min-width: 260px;
+  }
+  #status { font-size: 13px; margin-top: 10px; min-height: 18px; white-space: pre-wrap; }
+  #status.ok { color: #16a34a; }
+  #status.err { color: #dc2626; }
+  .spinner { color: #6b7280; font-size: 13px; }
+  footer { margin-top: 24px; font-size: 12px; color: #9ca3af; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #111827; color: #e5e7eb; }
+    .card { background: #1f2937; border-color: #374151; box-shadow: none; }
+    button { background: #374151; border-color: #4b5563; color: #e5e7eb; }
+    button:hover { background: #4b5563; }
+    button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+    button.danger { background: #dc2626; border-color: #dc2626; color: #fff; }
+    button.warn { background: #d97706; border-color: #d97706; color: #fff; }
+    input[type=text] { background: #111827; border-color: #4b5563; color: #e5e7eb; }
+    th { color: #9ca3af; }
+    th, td { border-bottom-color: #374151; }
+    .badge { background: #312e81; color: #c7d2fe; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="icon">🛠️</div>
+    <h1>Сервис: управление бэкапами</h1>
+  </header>
+  <div class="sub">Резервные копии файла данных приложения «Учёт автомобилей». Страница доступна только из локальной сети.</div>
+
+  <div class="card">
+    <div class="row-between">
+      <h2 style="margin:0">Текущие данные</h2>
+      <div class="actions">
+        <button class="primary" id="btnCreate">➕ Создать бэкап</button>
+        <input type="text" id="noteInput" placeholder="Пометка (необязательно)" maxlength="120" />
+      </div>
+    </div>
+    <div id="currentInfo" class="spinner">Загрузка…</div>
+  </div>
+
+  <div class="card">
+    <div class="row-between">
+      <h2 style="margin:0">Список бэкапов</h2>
+      <div class="actions">
+        <button id="btnRefresh">🔄 Обновить</button>
+        <button id="btnDownloadAll">📦 Скачать все (zip)</button>
+      </div>
+    </div>
+    <div id="list" class="spinner">Загрузка…</div>
+  </div>
+
+  <div id="status"></div>
+
+  <footer>
+    ⚠️ Восстановление из бэкапа заменяет текущие данные приложения. Бэкап создаётся автоматически перед каждым восстановлением.
+    Закрыть страницу: <a href="/">← к приложению</a>
+  </footer>
+</div>
+
+<script>
+(function () {
+  var API = '/api/backup';
+  var statusEl = document.getElementById('status');
+  var listEl = document.getElementById('list');
+  var currentEl = document.getElementById('currentInfo');
+
+  function fmtSize(n) {
+    if (n == null) return '—';
+    if (n < 1024) return n + ' Б';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' КБ';
+    return (n / 1024 / 1024).toFixed(2) + ' МБ';
+  }
+  function fmtDate(iso) {
+    try { return new Date(iso).toLocaleString('ru-RU'); } catch (e) { return iso || '—'; }
+  }
+  function setStatus(msg, ok) {
+    statusEl.textContent = msg || '';
+    statusEl.className = msg ? (ok ? 'ok' : 'err') : '';
+    if (msg) setTimeout(function () { if (statusEl.textContent === msg) statusEl.textContent = ''; }, 8000);
+  }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+  function api(path, opts) {
+    return fetch(API + path, opts).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+        return j;
+      });
+    });
+  }
+
+  function loadList() {
+    listEl.innerHTML = '<span class="spinner">Загрузка…</span>';
+    api('/list').then(function (res) {
+      var items = res.backups || [];
+      currentEl.textContent =
+        'data.json: ' + fmtSize(res.currentSizeBytes) +
+        ' · записей: ' + (res.currentRecords != null ? res.currentRecords : '—') +
+        (res.locked ? ' · 🔒 файл заблокирован пользователем ' + esc(res.lockedBy) : '');
+
+      if (!items.length) {
+        listEl.innerHTML = '<div class="empty">Бэкапов пока нет. Создайте первый кнопкой выше.</div>';
+        return;
+      }
+      var rows = items.map(function (b) {
+        return '<tr>' +
+          '<td><div>' + esc(b.filename) + '</div><div style="color:#9ca3af;font-size:12px">' + fmtDate(b.createdAt) + '</div></td>' +
+          '<td>' + (b.note ? '<span class="badge">' + esc(b.note) + '</span>' : '—') + '</td>' +
+          '<td>' + fmtSize(b.sizeBytes) + '</td>' +
+          '<td>' + (b.records != null ? b.records : '—') + '</td>' +
+          '<td class="actions">' +
+            '<button data-act="download" data-id="' + esc(b.id) + '">⬇️ Скачать</button>' +
+            '<button class="warn" data-act="restore" data-id="' + esc(b.id) + '">♻️ Восстановить</button>' +
+            '<button class="danger" data-act="delete" data-id="' + esc(b.id) + '">🗑 Удалить</button>' +
+          '</td></tr>';
+      }).join('');
+      listEl.innerHTML = '<table><thead><tr><th>Файл</th><th>Пометка</th><th>Размер</th><th>Записей</th><th style="width:1%"></th></tr></thead><tbody>' + rows + '</tbody></table>';
+    }).catch(function (e) {
+      listEl.innerHTML = '<div class="empty">Не удалось получить список: ' + esc(e.message) + '</div>';
+      setStatus('', false);
+    });
+  }
+
+  function createBackup() {
+    var btn = document.getElementById('btnCreate');
+    btn.disabled = true;
+    api('/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: document.getElementById('noteInput').value.trim() })
+    }).then(function (res) {
+      setStatus('✅ Бэкап создан: ' + res.filename, true);
+      document.getElementById('noteInput').value = '';
+      loadList();
+    }).catch(function (e) {
+      setStatus('❌ ' + e.message, false);
+    }).finally(function () { btn.disabled = false; });
+  }
+
+  listEl.addEventListener('click', function (ev) {
+    var btn = ev.target.closest('button[data-act]');
+    if (!btn) return;
+    var id = btn.getAttribute('data-id');
+    var act = btn.getAttribute('data-act');
+
+    if (act === 'download') {
+      window.location.href = API + '/download/' + encodeURIComponent(id);
+      return;
+    }
+    if (act === 'restore') {
+      if (!confirm('Восстановить данные из этого бэкапа?\n\nТекущий data.json будет заменён.\nПеред заменой автоматически создастся резервная копия текущих данных.')) return;
+      btn.disabled = true;
+      api('/restore/' + encodeURIComponent(id), { method: 'POST' })
+        .then(function (res) {
+          setStatus('✅ Данные восстановлены из ' + res.restoredFrom + '. Предыдущая версия сохранена как ' + res.preRestoreBackup, true);
+          loadList();
+        })
+        .catch(function (e) { setStatus('❌ ' + e.message, false); btn.disabled = false; });
+      return;
+    }
+    if (act === 'delete') {
+      if (!confirm('Удалить этот бэкап безвозвратно?')) return;
+      btn.disabled = true;
+      api('/' + encodeURIComponent(id), { method: 'DELETE' })
+        .then(function () { setStatus('🗑 Бэкап удалён', true); loadList(); })
+        .catch(function (e) { setStatus('❌ ' + e.message, false); btn.disabled = false; });
+    }
+  });
+
+  document.getElementById('btnCreate').addEventListener('click', createBackup);
+  document.getElementById('btnRefresh').addEventListener('click', loadList);
+  document.getElementById('btnDownloadAll').addEventListener('click', function () {
+    window.location.href = API + '/archive.zip';
+  });
+
+  loadList();
+})();
+</script>
+</body>
+</html>
