@@ -190,6 +190,12 @@ export default function AuthScreen({ onAuthSuccess, onReadOnlyMode, darkMode }: 
           <p className={`text-xs text-center mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
             Просмотр данных без возможности редактирования
           </p>
+          <p className={`text-sm font-bold text-center mt-2 ${darkMode ? 'text-red-400' : 'text-red-600'}`}>
+            Для режима "Только просмотр" регистрация\авторизация не нужны. 
+          </p>
+          <p className={`text-sm font-bold text-center mt-2 ${darkMode ? 'text-red-400' : 'text-red-600'}`}>
+            Добро пожаловать! 
+          </p>
         </div>
       </div>
     </div>
