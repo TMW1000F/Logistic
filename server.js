@@ -383,6 +383,46 @@ app.get('/api/auth/users', async (req, res) => {
   res.json(userList);
 });
 
+// Удаление пользователя. Используется сервисной страницей /service.html:
+// регистрация остаётся на стороне приложения, здесь только удаление.
+// Доступ — как к сервису бэкапов: только из локальной сети; при необходимости
+// можно дополнительно потребовать секретный заголовок SERVICE_TOKEN.
+app.delete('/api/auth/users/:id', async (req, res) => {
+  if (!isLanRequest(req)) {
+    return res.status(403).json({ error: 'Удаление пользователей доступно только из локальной сети' });
+  }
+  const serviceToken = process.env.SERVICE_TOKEN || '';
+  if (serviceToken && req.headers['x-service-token'] !== serviceToken) {
+    return res.status(401).json({ error: 'Неверный или отсутствует токен сервиса (заголовок X-Service-Token)' });
+  }
+
+  try {
+    const users = await readUsers();
+    const idx = users.findIndex(u => u.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: 'Пользователь не найден' });
+    const removed = users[idx];
+
+    // Если удаляемый пользователь сейчас держит блокировку — освобождаем её,
+    // иначе lock.json останется «висеть» на несуществующем пользователе.
+    try {
+      const lock = await checkLock();
+      if (lock && lock.userId === removed.id) {
+        await releaseLock(removed.id);
+      }
+    } catch (e) {
+      console.warn('⚠️ Не удалось проверить блокировку при удалении пользователя:', e.message);
+    }
+
+    users.splice(idx, 1);
+    await writeUsers(users);
+    console.log(`🗑 Пользователь удалён: ${removed.username} (${removed.id})`);
+    res.json({ success: true, username: removed.username });
+  } catch (error) {
+    console.error('❌ Ошибка удаления пользователя:', error);
+    res.status(500).json({ error: 'Ошибка удаления пользователя' });
+  }
+});
+
 // Проверка токена
 app.get('/api/auth/verify', async (req, res) => {
   const { token } = req.query;

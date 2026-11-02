@@ -171,6 +171,15 @@
 
   <div class="card">
     <div class="row-between">
+      <h2 style="margin:0">👥 Пользователи</h2>
+      <button id="btnRefreshUsers">🔄 Обновить</button>
+    </div>
+    <div id="usersList" class="spinner">Загрузка…</div>
+    <div class="hint">Здесь можно только удалить пользователя (например, ушедшего сотрудника). Регистрация — через обычную форму приложения.</div>
+  </div>
+
+  <div class="card">
+    <div class="row-between">
       <h2 style="margin:0">Список бэкапов</h2>
       <div class="actions">
         <button id="btnRefresh">🔄 Обновить</button>
@@ -319,6 +328,64 @@
   document.getElementById('btnDownloadAll').addEventListener('click', function () {
     window.location.href = API + '/archive.zip';
   });
+
+  // ---- Пользователи: только удаление (регистрация — через приложение) ----
+  var usersEl = document.getElementById('usersList');
+
+  function loadUsers() {
+    usersEl.innerHTML = '<span class="spinner">Загрузка…</span>';
+    fetch('/api/auth/users').then(function (r) {
+      return r.json().catch(function () { return []; }).then(function (users) {
+        if (!r.ok) {
+          throw new Error((users && users.error) || ('HTTP ' + r.status));
+        }
+        if (!Array.isArray(users)) users = [];
+        if (!users.length) {
+          usersEl.innerHTML = '<div class="empty">Пользователей нет.</div>';
+          return;
+        }
+        var rows = users.map(function (u) {
+          return '<tr>' +
+            '<td>' + esc(u.username) + '</td>' +
+            '<td>' + esc(u.displayName || '') + '</td>' +
+            '<td style="color:#9ca3af;font-size:12px">' + esc(u.id) + '</td>' +
+            '<td class="actions" style="text-align:right"><button class="danger" data-uact="delete-user" data-uid="' + esc(u.id) + '" data-uname="' + esc(u.username) + '">🗑 Удалить</button></td>' +
+            '</tr>';
+        }).join('');
+        usersEl.innerHTML = '<table><thead><tr><th>Логин</th><th>Имя</th><th>ID</th><th style="width:1%"></th></tr></thead><tbody>' + rows + '</tbody></table>';
+      });
+    }).catch(function (e) {
+      usersEl.innerHTML = '<div class="empty">Не удалось получить список пользователей: ' + esc(e.message) + '</div>';
+    });
+  }
+
+  usersEl.addEventListener('click', function (ev) {
+    var btn = ev.target.closest('button[data-uact]');
+    if (!btn) return;
+    if (btn.getAttribute('data-uact') !== 'delete-user') return;
+    var uid = btn.getAttribute('data-uid');
+    var uname = btn.getAttribute('data-uname');
+    if (!confirm('Удалить пользователя «' + uname + '»?\n\n' +
+      'Он потеряет доступ к приложению (токен, привязанный к его ID, перестанет действовать).\n' +
+      'Данные приложения при этом НЕ удаляются.\n\n' +
+      'Если пользователь сейчас работает — сначала завершите его сессию.')) return;
+    btn.disabled = true;
+    fetch('/api/auth/users/' + encodeURIComponent(uid), { method: 'DELETE' })
+      .then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (j) {
+          if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+          return j;
+        });
+      })
+      .then(function () {
+        setStatus('🗑 Пользователь «' + uname + '» удалён', true);
+        loadUsers();
+      })
+      .catch(function (e) { setStatus('❌ ' + e.message, false); btn.disabled = false; });
+  });
+
+  document.getElementById('btnRefreshUsers').addEventListener('click', loadUsers);
+  loadUsers();
 
   // ---- Настройки автобэкапа ----
   var autoEnabledEl = document.getElementById('autoEnabled');
