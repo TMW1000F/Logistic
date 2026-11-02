@@ -19,8 +19,20 @@ interface Props {
 }
 
 export default function AutoTab({ darkMode = false, readOnly = false }: Props) {
-  const { state, dispatch, syncToServer } = useStore();
+  const { state, dispatch, syncToServer, refreshFromServer } = useStore();
   const toast = useToast();
+
+  // При открытии вкладки «Данные автомобиля» подтягиваем актуальный
+  // data.json с сервера — иначе после архивирования/восстановления из
+  // бэкапа пользователь видит устаревшие (закешенные на клиенте) строки.
+  // Порядок для удалений гарантирован в handleDelete*: таблица сначала
+  // обновляется удалением локально, затем изменение записывается на сервер
+  // (await syncToServer), и только после этого возможна перезагрузка —
+  // поэтому уже удалённая запись не может «вернуться».
+  useEffect(() => {
+    refreshFromServer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Форма ввода
   const [selectedCarId, setSelectedCarId] = useState('');

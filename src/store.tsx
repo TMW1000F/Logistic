@@ -83,6 +83,7 @@ interface StoreContextType {
   state: AppState;
   dispatch: Dispatch<Action>;
   syncToServer: () => Promise<boolean>;
+  refreshFromServer: () => Promise<void>;
   isLocked: boolean;
   lockInfo: { userId: string; computerName: string } | null;
   isLoading: boolean;
@@ -103,6 +104,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Актуальное состояние для асинхронных колбэков (syncToServer)
   const stateRef = useRef(state);
   useEffect(() => { stateRef.current = state; }, [state]);
+  // Флаг «идёт принудительная загрузка с сервера» (refreshFromServer).
+  // Пока он установлен, debounce-автосохранение приостанавливается: иначе
+  // только что скачанный с сервера снимок вызвал бы эффект автосохранения
+  // и лишним POSTом перезаписал data.json (или столкнулся с блокировкой).
+  const refreshingRef = useRef(false);
 
 
   // Единственная точка применения статуса блокировки к состоянию стора
@@ -182,6 +188,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // Устанавливаем новый таймер (задержка 2 секунды)
     const timeout = setTimeout(async () => {
       try {
+        // Если идёт принудительная загрузка с сервера (refreshFromServer),
+        // не сохраняем: иначе скачанный снимок сразу же уйдёт обратно на
+        // сервер лишним POSTом.
+        if (refreshingRef.current) return;
+
         const currentUser = getCurrentUser();
         
         // Если пользователь не авторизован, НЕ сохраняем на сервер и
@@ -258,11 +269,44 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Принудительная загрузка актуальных данных с сервера (свежий data.json).
+  // Вызывается при открытии вкладки «Данные автомобиля», чтобы после
+  // архивирования/восстановления из бэкапа на экране не оставались
+  // устаревшие (закешенные) строки.
+  // ВАЖНО про порядок операций: локальные изменения (например, удаление
+  // строки) сначала записываются на сервер (syncToServer awaited), и только
+  // потом таблица обновляется этим refreshFromServer. Если бы обновление
+  // произошло до записи, сервер вернул бы ещё не удалённую запись и она
+  // «воскресла» бы в таблице — удалить её стало бы невозможно.
+  const refreshFromServer = async (): Promise<void> => {
+    // Не перезагружаем, пока идёт первая загрузка или данные заблокированы
+    if (isLoading || isLocked) return;
+    try {
+      refreshingRef.current = true;
+      // Отменяем отложенное автосохранение — оно не должно выстрелить
+      // по воле dispatch(LOAD_STATE) ниже.
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current);
+        syncTimeoutRef.current = null;
+      }
+      const data = await fetchData();
+      dispatch({ type: 'LOAD_STATE', payload: data });
+      localStorage.setItem('car_accounting_data', JSON.stringify(data));
+      setError(null);
+    } catch (err) {
+      // Сервер недоступен — оставляем текущие данные как есть
+      console.error('Ошибка обновления данных с сервера:', err);
+    } finally {
+      refreshingRef.current = false;
+    }
+  };
+
   return (
     <StoreContext.Provider value={{ 
       state, 
       dispatch, 
       syncToServer,
+      refreshFromServer,
       isLocked,
       lockInfo,
       isLoading,

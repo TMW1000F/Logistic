@@ -170,11 +170,15 @@ function getAuthUserId(): string | null {
 }
 
 // Получить все данные
+// cache: 'no-store' — запрос НЕ должен браться из HTTP-кеша браузера:
+// после архивирования/восстановления из бэкапа на сервере data.json может
+// отличаться от закешированного ответа, и пользователь увидел бы устаревшие
+// данные. no-store гарантирует, что каждый раз читается актуальный файл.
 export async function fetchData(): Promise<AppState> {
   try {
     const url = `${API_BASE}/data`;
     console.log('Запрос к серверу:', url);
-    const response = await fetch(url);
+    const response = await fetch(url, { cache: 'no-store' });
     
     if (!response.ok) {
       throw new Error(`Сервер вернул статус ${response.status}: ${response.statusText}`);
