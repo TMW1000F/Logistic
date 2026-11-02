@@ -164,16 +164,17 @@ export default function CarsTab({ darkMode = false, readOnly = false }: Props) {
     resetForm();
   };
 
-  const handleDelete = (car: CarInBase) => {
+  const handleDelete = async (car: CarInBase) => {
     const trips = state.autoRecords.filter(r => r.car_number === car.plate).length;
     const msg = trips > 0
       ? `Удалить ${car.display} из базы?\nВнимание: к этому номеру привязано записей рейсов: ${trips}. Записи рейсов останутся, но автомобиль перестанет быть доступен для выбора.`
       : `Удалить ${car.display} из базы?`;
     if (confirm(msg)) {
       dispatch({ type: 'DELETE_CAR', payload: car.id });
+      // Немедленная синхронизация с сервером — чтобы актуализация данных
+      // при возврате фокуса окна не «вернула» удалённый автомобиль.
+      await syncToServer();
       toast.success(`Автомобиль ${car.display} удалён из базы`);
-      toast.error(`🗑️ Автомобиль ${car.display} удалён из базы`);
-
     }
   };
 
@@ -291,7 +292,6 @@ export default function CarsTab({ darkMode = false, readOnly = false }: Props) {
         ? `база заменена: ${unique.length} авто`
         : `новых: ${carsToAdd.length}, обновлено: ${carsUpdated.length}` + (dupInFileCount ? `, дублей пропущено: ${dupInFileCount}` : '');
       toast.success(`Импорт завершён (${summary})`);
-      toast.success(`📥 Импорт базы автомобилей: ${summary}`);
 
     } catch (e) {
       console.error('Ошибка импорта:', e);

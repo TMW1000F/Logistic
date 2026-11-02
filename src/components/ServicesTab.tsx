@@ -19,7 +19,7 @@ interface Props {
 }
 
 export default function ServicesTab({ darkMode = false, readOnly = false }: Props) {
-  const { state, dispatch } = useStore();
+  const { state, dispatch, syncToServer } = useStore();
   const toast = useToast();
 
   // Форма ввода
@@ -251,22 +251,21 @@ export default function ServicesTab({ darkMode = false, readOnly = false }: Prop
     setCoefficient('1.5');
     setUseCoefficient(false);
     toast.success(`Услуга "${serviceType}" добавлена`);
-    toast.success(`✅ Услуга "${serviceType}" добавлена`);
-
   };
 
   // Удаление
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Удалить выбранную запись?')) {
       dispatch({ type: 'DELETE_SERVICE_RECORD', payload: id });
       setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+      // Немедленная синхронизация с сервером, чтобы актуализация данных
+      // при возврате фокуса окна не вернула удалённую запись.
+      await syncToServer();
       toast.success('Запись удалена');
-      toast.error('🗑️ Запись удалена');
-
     }
   };
 
-  const handleDeleteSelected = () => {
+  const handleDeleteSelected = async () => {
     if (selectedIds.size === 0) {
       toast.warning('Выберите записи для удаления');
       return;
@@ -278,9 +277,8 @@ export default function ServicesTab({ darkMode = false, readOnly = false }: Prop
     }
     const count = selectedIds.size;
     setSelectedIds(new Set());
+    await syncToServer();
     toast.success(`Удалено записей: ${count}`);
-    toast.error(`🗑️ Удалено записей: ${count}`);
-
   };
 
   const toggleSelectAll = () => {
@@ -445,9 +443,9 @@ export default function ServicesTab({ darkMode = false, readOnly = false }: Prop
               </tr>
             </thead>
             <tbody>
-              {displayData.map((row, idx) => (
+              {displayData.map((row) => (
                 <tr
-                  key={idx}
+                  key={row.id}
                   className={`border-t ${darkMode ? 'border-gray-700 hover:bg-gray-700' : 'hover:bg-gray-50'} ${row.has_high_tariff ? (darkMode ? 'bg-red-900/30' : 'bg-red-50') : ''} ${row.is_group ? (darkMode ? 'bg-green-900/30 font-semibold' : 'bg-green-50 font-semibold') : ''} ${selectedIds.has(row.id) ? (darkMode ? 'bg-green-900/50' : 'bg-green-100') : ''}`}
                 >
                   <td className="px-2 py-1.5 text-center sticky left-0 bg-inherit">

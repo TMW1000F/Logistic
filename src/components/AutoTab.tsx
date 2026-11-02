@@ -19,7 +19,7 @@ interface Props {
 }
 
 export default function AutoTab({ darkMode = false, readOnly = false }: Props) {
-  const { state, dispatch } = useStore();
+  const { state, dispatch, syncToServer } = useStore();
   const toast = useToast();
 
   // Форма ввода
@@ -304,23 +304,23 @@ export default function AutoTab({ darkMode = false, readOnly = false }: Props) {
     setCoefficient('1.5');
     setUseCoefficient(false);
     toast.success(`Автомобиль ${displayForMsg} добавлен`);
-    toast.success(`✅ Автомобиль ${displayForMsg} добавлен`);
-
   };
 
   // Удаление одной записи
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Удалить выбранную запись?')) {
       dispatch({ type: 'DELETE_AUTO_RECORD', payload: id });
       setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+      // Немедленно синхронизируем удаление с сервером, не дожидаясь
+      // debounce-автосохранения: иначе актуализация данных при возврате
+      // фокуса окна может вернуть удалённую запись обратно.
+      await syncToServer();
       toast.success('Запись удалена');
-      toast.error('🗑️ Запись удалена');
-
     }
   };
 
   // Удаление выбранных
-  const handleDeleteSelected = () => {
+  const handleDeleteSelected = async () => {
     if (selectedIds.size === 0) {
       toast.warning('Выберите записи для удаления');
       return;
@@ -332,9 +332,9 @@ export default function AutoTab({ darkMode = false, readOnly = false }: Props) {
     }
     const count = selectedIds.size;
     setSelectedIds(new Set());
+    // Немедленная синхронизация с сервером — см. комментарий в handleDelete
+    await syncToServer();
     toast.success(`Удалено записей: ${count}`);
-    toast.error(`🗑️ Удалено записей: ${count}`);
-
   };
 
   // Выбор всех / снять все
@@ -607,9 +607,9 @@ export default function AutoTab({ darkMode = false, readOnly = false }: Props) {
               </tr>
             </thead>
             <tbody>
-              {displayData.map((row, idx) => (
+              {displayData.map((row) => (
                 <tr
-                  key={idx}
+                  key={row.id}
                   className={`border-t ${darkMode ? 'border-gray-700 hover:bg-gray-700' : 'hover:bg-gray-50'} ${row.has_high_tariff ? (darkMode ? 'bg-red-900/30' : 'bg-red-50') : ''} ${row.is_group ? (darkMode ? 'bg-blue-900/30 font-semibold' : 'bg-blue-50 font-semibold') : ''} ${selectedIds.has(row.id) ? (darkMode ? 'bg-blue-900/50' : 'bg-blue-100') : ''}`}
                 >
                   <td className="px-2 py-1.5 text-center sticky left-0 bg-inherit">
