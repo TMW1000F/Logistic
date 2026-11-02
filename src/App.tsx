@@ -8,7 +8,7 @@ import ResultsTab from './components/ResultsTab';
 import TariffsTab from './components/TariffsTab';
 import CarsTab from './components/CarsTab';
 import StatsTab from './components/StatsTab';
-import { Car, Wrench, BarChart3, DollarSign, TrendingUp, HelpCircle, Save, FolderOpen, FilePlus, Sun, Moon, LogOut, Eye, Lock, Database } from 'lucide-react';
+import { Car, Wrench, BarChart3, DollarSign, TrendingUp, HelpCircle, Save, FolderOpen, FilePlus, Sun, Moon, LogOut, Eye, Lock, Database, Archive } from 'lucide-react';
 import { calcDurationHours, calcAutoCost, calcServiceHours, calcServiceCost, formatDate, generateId } from './types';
 import { 
   getCurrentUser, 
@@ -24,7 +24,8 @@ import {
   setReleaseCallback,
   setLockLostCallback,
   checkLockStatus,
-  updateActivity
+  updateActivity,
+  fetchData
 } from './api';
 
 const APP_NAME = 'Учёт автомобилей';
@@ -54,7 +55,7 @@ function useLockState(viewMode: 'none' | 'edit' | 'read', enterReadOnly: () => v
 }
 
 function AppContent() {
-  const { state, dispatch, isLocked, lockInfo, isLoading, error } = useStore();
+  const { state, dispatch, syncToServer, isLocked, lockInfo, isLoading, error } = useStore();
   const toast = useToast();
   const [activeTab, setActiveTab] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -291,19 +292,19 @@ function AppContent() {
     setViewMode('read');
   };
 
-  // Сохранение в файл (TSV формат)
-  const handleSave = () => {
+  // Формирование TSV-строк из записей (общий код для «Сохранить» и «Архивировать»)
+  const buildTsvLines = (autoRecords: typeof state.autoRecords, serviceRecords: typeof state.serviceRecords): string[] => {
     const lines: string[] = [];
-    
+
     // Заголовок
     lines.push('Тип\tНомер ТС\tКатегория\tКомпания\tКол-во\tТип оплаты\tВремя\tЧасы\tСтоимость\tТариф\tДата\tКоэффициент');
-    
+
     // Автомобили
-    for (const record of state.autoRecords) {
+    for (const record of autoRecords) {
       const duration = calcDurationHours(record.arrival, record.departure);
       const cost = calcAutoCost(record);
       const coeff = record.coefficient !== 1.0 ? `да х${record.coefficient}` : '-';
-      
+
       lines.push([
         'auto',
         record.car_number,
@@ -319,16 +320,16 @@ function AppContent() {
         coeff
       ].join('\t'));
     }
-    
+
     // Услуги
-    for (const record of state.serviceRecords) {
+    for (const record of serviceRecords) {
       const hours = calcServiceHours(record);
       const cost = calcServiceCost(record);
       const coeff = record.coefficient !== 1.0 ? `да х${record.coefficient}` : '-';
-      const time = record.payment_type === 'hourly' && record.arrival && record.departure 
-        ? `${record.arrival}-${record.departure}` 
+      const time = record.payment_type === 'hourly' && record.arrival && record.departure
+        ? `${record.arrival}-${record.departure}`
         : '-';
-      
+
       lines.push([
         'service',
         '-',
@@ -344,16 +345,232 @@ function AppContent() {
         coeff
       ].join('\t'));
     }
-    
-    const blob = new Blob([lines.join('\n')], { type: 'text/tab-separated-values;charset=utf-8' });
+
+    return lines;
+  };
+
+  // Скачивание текста на диск через скрытый <a download>
+  const downloadText = (content: string, fileName: string, mime: string) => {
+    const blob = new Blob([content], { type: mime });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    const dateStr = new Date().toISOString().split('T')[0];
-    a.download = `car_accounting_${dateStr}.txt`;
+    a.download = fileName;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  // Сохранение в файл (TSV формат)
+  const handleSave = () => {
+    const lines = buildTsvLines(state.autoRecords, state.serviceRecords);
+    const dateStr = new Date().toISOString().split('T')[0];
+    downloadText(lines.join('\n'), `car_accounting_${dateStr}.txt`, 'text/tab-separated-values;charset=utf-8');
     toast.success(`Сохранено: авто — ${state.autoRecords.length}, услуг — ${state.serviceRecords.length}`);
+  };
+
+  // ==================== Архивирование ====================
+  // Архив = сохранение в файл всех записей ДО выбранной даты ВКЛЮЧИТЕЛЬНО
+  // (как по кнопке «Сохранить», с обязательным выбором места сохранения)
+  // с последующим удалением этих записей из таблицы.
+  const [showArchiveDialog, setShowArchiveDialog] = useState(false);
+  const [archiveUntil, setArchiveUntil] = useState('');
+  const [archiveBusy, setArchiveBusy] = useState(false);
+  const archiveInputRef = useRef<HTMLInputElement>(null);
+
+  // Браузер поддерживает диалог выбора места сохранения? (File System Access API)
+  const hasSaveLocationPicker = typeof (window as any).showSaveFilePicker === 'function';
+
+  // Перед архивированием убеждаемся, что данные не устарели: сверяем количество
+  // записей на сервере с текущими в таблице. Если другой пользователь успел
+  // что-то изменить — архивирование отменяем, чтобы не удалить чужие данные.
+  const verifyServerDataFresh = async (): Promise<boolean> => {
+    try {
+      const serverData = await fetchData();
+      const same =
+        serverData.autoRecords.length === state.autoRecords.length &&
+        serverData.serviceRecords.length === state.serviceRecords.length;
+      if (!same) {
+        toast.error('Данные на сервере изменились другим пользователем. Обновите страницу и повторите архивирование.');
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('Ошибка проверки актуальности данных:', err);
+      toast.error('Не удалось проверить актуальность данных на сервере — архивирование отменено');
+      return false;
+    }
+  };
+
+  const openArchiveDialog = async () => {
+    if (readOnly || !isAuthenticatedUser) {
+      toast.error('Архивирование доступно только авторизованному пользователю в режиме редактирования');
+      return;
+    }
+    if (isLocked && lockInfo) {
+      const me = getCurrentUser();
+      if (!me || lockInfo.userId !== me.id) {
+        toast.error(`Данные заблокированы пользователем: ${lockInfo.computerName}. Дождитесь освобождения.`);
+        return;
+      }
+    }
+    if (state.autoRecords.length === 0 && state.serviceRecords.length === 0) {
+      toast.info('Нет данных для архивирования');
+      return;
+    }
+    if (!(await verifyServerDataFresh())) return;
+
+    // По умолчанию предлагаем самую позднюю дату среди записей
+    const allDates = [...state.autoRecords, ...state.serviceRecords]
+      .map(r => r.date)
+      .filter(Boolean)
+      .sort();
+    setArchiveUntil(allDates.length ? allDates[allDates.length - 1] : '');
+    setShowArchiveDialog(true);
+  };
+
+  // Подсчёт того, что попадёт в архив при текущей выбранной дате
+  const getArchiveSplit = (until: string) => {
+    const archivedAuto = state.autoRecords.filter(r => r.date <= until);
+    const archivedServices = state.serviceRecords.filter(r => r.date <= until);
+    const remainAuto = state.autoRecords.filter(r => r.date > until);
+    const remainServices = state.serviceRecords.filter(r => r.date > until);
+    return { archivedAuto, archivedServices, remainAuto, remainServices };
+  };
+
+  // Запись файла с ОБЯЗАТЕЛЬНЫМ выбором места сохранения.
+  // Возвращает: 'saved' — файл записан в выбранное место;
+  //             'downloaded' — браузер без FS API: файл ушёл в «Загрузки»,
+  //             место надо подтвердить вторым шагом;
+  //             'cancelled' — пользователь отменил выбор (архивирование НЕ выполняется).
+  const saveArchiveFileWithLocation = async (content: string, fileName: string): Promise<'saved' | 'downloaded' | 'cancelled'> => {
+    if (hasSaveLocationPicker) {
+      try {
+        const handle = await (window as any).showSaveFilePicker({
+          suggestedName: fileName,
+          types: [{ description: 'Архив учёта (текст)', accept: { 'text/plain': ['.txt'] } }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(new Blob([content], { type: 'text/plain;charset=utf-8' }));
+        await writable.close();
+        return 'saved';
+      } catch (err: any) {
+        if (err && err.name === 'AbortError') return 'cancelled';
+        // API вызывается, но недоступен (например, iframe) — fallback ниже
+      }
+    }
+    downloadText(content, fileName, 'text/plain;charset=utf-8');
+    return 'downloaded';
+  };
+
+  // Основной шаг архивирования после выбора даты в диалоге
+  const handleArchiveConfirm = async () => {
+    const until = archiveUntil; // YYYY-MM-DD, включительно
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(until)) {
+      toast.error('Выберите дату, до которой включительно архивировать данные');
+      return;
+    }
+    const split = getArchiveSplit(until);
+    if (split.archivedAuto.length === 0 && split.archivedServices.length === 0) {
+      toast.info(`Нет записей до ${formatDate(until)} включительно — нечего архивировать`);
+      return;
+    }
+    if (!confirm(
+      `Архивировать записи до ${formatDate(until)} ВКЛЮЧИТЕЛЬНО?\n\n` +
+      `В файл уйдёт и будет удалено из таблицы:\n` +
+      `автомобилей: ${split.archivedAuto.length}, услуг: ${split.archivedServices.length}.\n` +
+      `Останется в таблице:\nавтомобилей: ${split.remainAuto.length}, услуг: ${split.remainServices.length}.\n\n` +
+      `Далее обязательно выберите место сохранения архивного файла.`
+    )) return;
+
+    // Ещё раз убеждаемся, что блокировка не перешла к другому и данные актуальны
+    if (isLocked && lockInfo) {
+      const me = getCurrentUser();
+      if (!me || lockInfo.userId !== me.id) {
+        toast.error(`Данные заблокированы пользователем: ${lockInfo.computerName}. Архивирование отменено.`);
+        return;
+      }
+    }
+    if (!(await verifyServerDataFresh())) return;
+
+    setArchiveBusy(true);
+    try {
+      const content = buildTsvLines(split.archivedAuto, split.archivedServices).join('\n');
+      const fileName = `car_archive_do_${until.split('-').reverse().join('.')}.txt`;
+      const result = await saveArchiveFileWithLocation(content, fileName);
+      if (result === 'cancelled') {
+        toast.info('Место сохранения не выбрано — архивирование отменено, данные не удалены');
+        return;
+      }
+      if (result === 'downloaded') {
+        // FS API нет: предложим вторым шагом выбрать скачанный файл (подтверждение места)
+        toast.info(`Файл "${fileName}" скачан в папку «Загрузки». Выберите его, чтобы подтвердить место сохранения архива`);
+        archiveInputRef.current?.click();
+        // Диалог остаётся открытым до подтверждения второго шага
+        return;
+      }
+      // Файл записан в выбранное место — теперь удаляем заархивированные строки из таблицы
+      await finishArchive(split, fileName, 'saved');
+    } finally {
+      setArchiveBusy(false);
+    }
+  };
+
+  // Второй шаг для браузеров без File System Access API: пользователь выбирает
+  // скачанный архивный файл (фактически подтверждает место сохранения) — после
+  // этого выполняется удаление записей из таблицы.
+  const handleArchiveLocationConfirmed = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const until = archiveUntil;
+    const split = getArchiveSplit(until);
+    if (split.archivedAuto.length === 0 && split.archivedServices.length === 0) {
+      setShowArchiveDialog(false);
+      return;
+    }
+    const expectedContent = buildTsvLines(split.archivedAuto, split.archivedServices).join('\n');
+    const actualContent = await file.text();
+    if (actualContent.replace(/\r\n/g, '\n') !== expectedContent) {
+      toast.error('Выбранный файл не совпадает со сформированным архивом — выберите скачанный файл ' + file.name);
+      return;
+    }
+    setArchiveBusy(true);
+    try {
+      await finishArchive(split, file.name, 'downloaded');
+    } finally {
+      setArchiveBusy(false);
+    }
+  };
+
+  // Завершение: удаляем заархивированные строки из состояния и сохраняем остаток на сервер
+  const finishArchive = async (
+    split: ReturnType<typeof getArchiveSplit>,
+    fileName: string,
+    where: 'saved' | 'downloaded'
+  ) => {
+    dispatch({
+      type: 'IMPORT_DATA',
+      payload: {
+        autoRecords: split.remainAuto,
+        serviceRecords: split.remainServices,
+        tariffs: state.tariffs,
+        cars: state.cars,
+      }
+    });
+    const synced = await syncToServer();
+    setShowArchiveDialog(false);
+
+    if (synced) {
+      toast.success(
+        `Архив сохранён (${where === 'saved' ? 'в выбранную папку' : 'в выбранное место'}): ${fileName}. ` +
+        `Заархивировано и удалено из таблицы: авто — ${split.archivedAuto.length}, услуг — ${split.archivedServices.length}`
+      );
+    } else {
+      toast.error(
+        `Архив "${fileName}" сохранён, но остаток данных НЕ удалось записать на сервер (возможно, блокировка). ` +
+        `Обновите страницу и проверьте таблицу перед следующим архивированием`
+      );
+    }
   };
 
   // Загрузка из файла
@@ -587,6 +804,14 @@ function AppContent() {
                   title="Новый файл (Ctrl+N)"
                 >
                   <FilePlus size={16} /> Новый
+                </button>
+                <button
+                  onClick={openArchiveDialog}
+                  disabled={archiveBusy}
+                  className="flex items-center gap-1 bg-orange-500/30 hover:bg-orange-500/40 px-3 py-1.5 rounded text-sm transition disabled:opacity-50 disabled:cursor-wait"
+                  title="Сохранить в файл с выбором места все записи до указанной даты включительно и удалить их из таблицы"
+                >
+                  <Archive size={16} /> Архивировать
                 </button>
               </>
             )}
