@@ -54,7 +54,7 @@ function useLockState(viewMode: 'none' | 'edit' | 'read', enterReadOnly: () => v
 }
 
 function AppContent() {
-  const { state, dispatch, isLocked, lockInfo, isLoading, error } = useStore();
+  const { state, dispatch, isLocked, lockInfo, isLoading, error, reloadFromServer } = useStore();
   const toast = useToast();
   const [activeTab, setActiveTab] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -285,6 +285,10 @@ function AppContent() {
     // «блокировка не сразу подхватывается».
     startLockExtension();
     setViewMode('edit');
+    // Автообновление данных при запуске: всегда поднимаем актуальный снимок
+    // с сервера, чтобы не работать поверх устаревших данных (например, после
+    // архивирования или восстановления из бэкапа администратором).
+    reloadFromServer();
   };
 
   const handleReadOnlyMode = () => {

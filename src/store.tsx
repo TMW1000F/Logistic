@@ -83,6 +83,7 @@ interface StoreContextType {
   state: AppState;
   dispatch: Dispatch<Action>;
   syncToServer: () => Promise<boolean>;
+  reloadFromServer: () => Promise<void>; // Актуализация данных с сервера (при старте/возврате на вкладку)
   isLocked: boolean;
   lockInfo: { userId: string; computerName: string } | null;
   isLoading: boolean;
@@ -157,6 +158,42 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const interval = setInterval(checkLockStatus, 5000);
 
     return () => clearInterval(interval);
+  }, []);
+
+  // Принудительная перезагрузка данных с сервера.
+  // Используется при возврате фокуса на вкладку: если администратор
+  // архивировал записи или восстановил данные из бэкапа, открытое окно
+  // приложения держит в памяти (и в localStorage) устаревший снимок —
+  // и следующая автосохранённая запись перезаписывает сервер этим
+  // снимком, «восстанавливая» удалённые данные. Актуализация при каждом
+  // выходе на передний план закрывает эту гонку без перезагрузки страницы.
+  const reloadFromServer = async () => {
+    try {
+      const data = await fetchData();
+      dispatch({ type: 'LOAD_STATE', payload: data });
+      // Синхронизируем резервную копию в localStorage, чтобы неавторизованный
+      // fallback тоже больше не поднимал устаревшие (заархивированные) записи.
+      localStorage.setItem('car_accounting_data', JSON.stringify(data));
+      setError(null);
+    } catch (err) {
+      // Сервер недоступен — оставляем текущие данные, ничего не перезаписываем.
+      console.error('Ошибка актуализации данных с сервера:', err);
+    }
+  };
+
+  // Автообновление данных при возврате на вкладку приложения (и при фокусе окна)
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') reloadFromServer();
+    };
+    const handleFocus = () => reloadFromServer();
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
 
   // Автосохранение на сервер при изменении состояния (с debounce)
@@ -249,6 +286,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       state, 
       dispatch, 
       syncToServer,
+      reloadFromServer,
       isLocked,
       lockInfo,
       isLoading,
