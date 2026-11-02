@@ -1039,6 +1039,118 @@ app.post('/api/backup/restore/:id', async (req, res) => {
   }
 });
 
+// ---------- Архивирование данных со страницы сервиса ----------
+// POST /api/backup/archive-prepare  { until: "YYYY-MM-DD" }
+//   Разделяет записи data.json (autoRecords/serviceRecords) на «до даты
+//   включительно» и «после». Возвращает обе части, чтобы страница сервиса
+//   смогла сформировать файл архива и показать место сохранения (как кнопка
+//   «Сохранить» в приложении). ДАННЫЕ ПРИ ЭТОМ НЕ МЕНЯЮТСЯ.
+// POST /api/backup/archive-commit   { until: "YYYY-MM-DD" }
+//   Вызывается ТОЛЬКО после успешного выбора места и записи файла архива
+//   пользователем. Удаляет из data.json записи до указанной даты включительно
+//   (справочники тарифов и автомобилей остаются). Перед удалением обязательно
+//   создаётся страховочный бэкап всех текущих данных.
+// Оба запроса выполняются только когда данные не заблокированы работающим
+// пользователем приложения (как и восстановление из бэкапа).
+
+function isWithinRange(dateStr, from, to) {
+  // dateStr/from/to — строки YYYY-MM-DD; сравнение лексикографическое корректно
+  if (typeof dateStr !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false;
+  if (from && dateStr < from) return false;
+  if (to && dateStr > to) return false;
+  return true;
+}
+
+function splitRecordsByDate(data, until) {
+  // ВАЖНО: возвращаем «чистые» копии записей (без служебного поля kind),
+  // чтобы commit мог безопасно записать remaining обратно в data.json.
+  const inRange = [];
+  const remaining = [];
+  for (const r of (Array.isArray(data.autoRecords) ? data.autoRecords : [])) {
+    const clean = { ...r };
+    delete clean.kind;
+    (isWithinRange(clean.date, null, until) ? inRange : remaining).push({ ...clean, kind: 'auto' });
+  }
+  for (const r of (Array.isArray(data.serviceRecords) ? data.serviceRecords : [])) {
+    const clean = { ...r };
+    delete clean.kind;
+    (isWithinRange(clean.date, null, until) ? inRange : remaining).push({ ...clean, kind: 'service' });
+  }
+  return { inRange, remaining };
+}
+
+// Срез записей без служебного поля kind — для записи обратно в data.json
+function stripKind(list) {
+  return list.map(r => { const c = { ...r }; delete c.kind; return c; });
+}
+
+app.post('/api/backup/archive-prepare', async (req, res) => {
+  try {
+    const until = String(req.body?.until || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(until)) {
+      return res.status(400).json({ error: 'Укажите дату формата ГГГГ-ММ-ДД' });
+    }
+    const lock = await checkLock();
+    if (lock) {
+      return res.status(423).json({
+        error: `Данные заблокированы пользователем «${lock.computerName}». Закройте приложение (или выйдите из него), затем повторите архивирование.`,
+      });
+    }
+    const data = await readData();
+    const { inRange, remaining } = splitRecordsByDate(data, until);
+    res.json({
+      until,
+      archivedAutoCount: inRange.filter(r => r.kind === 'auto').length,
+      archivedServiceCount: inRange.filter(r => r.kind === 'service').length,
+      remainingAutoCount: remaining.filter(r => r.kind === 'auto').length,
+      remainingServiceCount: remaining.filter(r => r.kind === 'service').length,
+      autoRecords: inRange.filter(r => r.kind === 'auto'),
+      serviceRecords: inRange.filter(r => r.kind === 'service'),
+    });
+  } catch (error) {
+    console.error('❌ Ошибка подготовки архивирования:', error);
+    res.status(500).json({ error: 'Ошибка подготовки архивирования' });
+  }
+});
+
+app.post('/api/backup/archive-commit', async (req, res) => {
+  try {
+    const until = String(req.body?.until || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(until)) {
+      return res.status(400).json({ error: 'Укажите дату формата ГГГГ-ММ-ДД' });
+    }
+    const lock = await checkLock();
+    if (lock) {
+      return res.status(423).json({
+        error: `Данные заблокированы пользователем «${lock.computerName}». Архивирование отменено.`,
+      });
+    }
+
+    // Страховая копия ВСЕХ текущих данных перед удалением (обязательна)
+    const pre = await createBackupInternal(`архив: удаление записей до ${until} включительно`);
+
+    const data = await readData();
+    const { inRange, remaining } = splitRecordsByDate(data, until);
+    const newData = {
+      ...data,
+      autoRecords: stripKind(remaining.filter(r => r.kind === 'auto')),
+      serviceRecords: stripKind(remaining.filter(r => r.kind === 'service')),
+    };
+    await writeData(newData);
+    console.log(`🗄 Архивирование до ${until}: удалено ${inRange.length} записей, страховочный бэкап: ${pre ? pre.filename : 'НЕТ'}`);
+    res.json({
+      success: true,
+      removed: inRange.length,
+      removedAuto: inRange.filter(r => r.kind === 'auto').length,
+      removedService: inRange.filter(r => r.kind === 'service').length,
+      preArchiveBackup: pre ? pre.filename : null,
+    });
+  } catch (error) {
+    console.error('❌ Ошибка архивирования:', error);
+    res.status(500).json({ error: 'Ошибка архивирования данных' });
+  }
+});
+
 // DELETE /api/backup/:id — удалить бэкап
 app.delete('/api/backup/:id', async (req, res) => {
   try {

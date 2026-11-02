@@ -44,7 +44,7 @@
   input[type=text] {
     font: inherit; padding: 7px 10px; border: 1px solid #d1d5db; border-radius: 8px; min-width: 260px;
   }
-  input[type=time], input[type=number] {
+  input[type=time], input[type=number], input[type=date] {
     font: inherit; padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; color: #111827;
   }
   .settings-grid { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-end; }
@@ -91,7 +91,7 @@
     button.danger { background: #dc2626; border-color: #dc2626; color: #fff; }
     button.warn { background: #d97706; border-color: #d97706; color: #fff; }
     input[type=text] { background: #111827; border-color: #4b5563; color: #e5e7eb; }
-    input[type=time], input[type=number] { background: #111827; border-color: #4b5563; color: #e5e7eb; }
+    input[type=time], input[type=number], input[type=date] { background: #111827; border-color: #4b5563; color: #e5e7eb; }
     th { color: #9ca3af; }
     th, td { border-bottom-color: #374151; }
     .badge { background: #312e81; color: #c7d2fe; }
@@ -151,6 +151,19 @@
     </div>
     <div class="hint">Автобэкап выполняется один раз в сутки — в выбранное время. При сохранении настроек старые копии сверх указанного количества удаляются сразу.</div>
     <div class="hint" id="autoInfo">Загрузка настроек…</div>
+  </div>
+
+  <div class="card">
+    <h2>🗄 Архивирование данных</h2>
+    <div class="settings-grid">
+      <div class="setting">
+        <label for="archiveUntil">Архивировать данные до даты включительно</label>
+        <input type="date" id="archiveUntil" />
+      </div>
+      <button class="warn" id="btnArchive">🗄 Архивировать</button>
+    </div>
+    <div class="hint">По нажатию «Архивировать» все записи (автомобили и услуги) с начала и по указанную дату <b>включительно</b> будут сохранены в файл — как по кнопке «Сохранить» в приложении, с выбором места сохранения. После успешного сохранения файла эти записи удалятся из таблицы приложения. Если место сохранения не выбрано (диалог отменён) — данные НЕ удаляются.</div>
+    <div class="hint" id="archiveInfo"></div>
   </div>
 
   <div class="card">
@@ -353,6 +366,146 @@
   }
 
   document.getElementById('btnSaveSettings').addEventListener('click', saveSettings);
+
+  // ---- Архивирование данных (сохранить до даты включительно + удалить из приложения) ----
+  var archiveUntilEl = document.getElementById('archiveUntil');
+  var archiveInfoEl = document.getElementById('archiveInfo');
+  var btnArchiveEl = document.getElementById('btnArchive');
+
+  // Расчёты — копия логики приложения (types.ts), файл архива совпадает
+  // с форматом кнопки «Сохранить» на главной странице (TSV).
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  function fmtDateRu(iso) {
+    if (typeof iso !== 'string') return '';
+    var m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? (m[2] + '.' + m[3] + '.' + m[1]) : iso;
+  }
+  function calcDurationHours(arrival, departure) {
+    var a = String(arrival || '0:0').split(':'), d = String(departure || '0:0').split(':');
+    var start = parseInt(a[0], 10) * 60 + (parseInt(a[1], 10) || 0);
+    var end = parseInt(d[0], 10) * 60 + (parseInt(d[1], 10) || 0);
+    var diff = end - start;
+    if (diff < 0) diff += 24 * 60; // переход через полночь
+    return Math.round((diff / 60) * 100) / 100;
+  }
+  function buildArchiveTsv(res) {
+    var lines = ['Тип\tНомер ТС\tКатегория\tКомпания\tКол-во\tТип оплаты\tВремя\tЧасы\tСтоимость\tТариф\tДата\tКоэффициент'];
+    for (var i = 0; i < res.autoRecords.length; i++) {
+      var r = res.autoRecords[i];
+      var duration = calcDurationHours(r.arrival, r.departure);
+      var cost = Math.round(duration * r.tariff * r.coefficient * 100) / 100;
+      var coeff = r.coefficient !== 1.0 ? 'да х' + r.coefficient : '-';
+      lines.push(['auto', r.car_number, r.car_type, r.carrier, '1', '-',
+        r.arrival + '-' + r.departure, duration.toFixed(2), cost.toFixed(2),
+        Number(r.tariff).toFixed(2), fmtDateRu(r.date), coeff].join('\t'));
+    }
+    for (var j = 0; j < res.serviceRecords.length; j++) {
+      var s = res.serviceRecords[j];
+      var hourly = s.payment_type === 'hourly';
+      var hours = (hourly && s.arrival && s.departure) ? calcDurationHours(s.arrival, s.departure) : 0;
+      var scost = hourly
+        ? Math.round(hours * s.tariff * s.quantity * s.coefficient * 100) / 100
+        : Math.round(s.tariff * s.quantity * s.coefficient * 100) / 100;
+      var scoeff = s.coefficient !== 1.0 ? 'да х' + s.coefficient : '-';
+      var time = (hourly && s.arrival && s.departure) ? (s.arrival + '-' + s.departure) : '-';
+      lines.push(['service', '-', s.service_type, s.carrier, String(s.quantity),
+        hourly ? 'Почасовая' : 'Фиксированная', time, hours.toFixed(2), scost.toFixed(2),
+        Number(s.tariff).toFixed(2), fmtDateRu(s.date), scoeff].join('\t'));
+    }
+    return lines.join('\n');
+  }
+  function suggestArchiveName(until) {
+    var d = new Date();
+    var stamp = d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) + '_' + pad2(d.getHours()) + pad2(d.getMinutes());
+    return 'archiv_do_' + until + '_' + stamp + '.txt';
+  }
+
+  // Сохранение с выбором места: File System Access API (Chromium),
+  // fallback — обычный диалог загрузки браузера.
+  function saveArchiveFile(text, suggestedName) {
+    var blob = new Blob([text], { type: 'text/tab-separated-values;charset=utf-8' });
+    if (window.showSaveFilePicker) {
+      return window.showSaveFilePicker({
+        suggestedName: suggestedName,
+        types: [{ description: 'Текстовый файл (TSV)', accept: { 'text/tab-separated-values': ['.txt'] } }]
+      }).then(function (handle) {
+        return handle.createWritable().then(function (w) {
+          return w.write(blob).then(function () { return w.close(); });
+        }).then(function () { return { method: 'picker', name: handle.name }; });
+      });
+    }
+    return Promise.resolve().then(function () {
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = suggestedName;
+      a.click();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+      return { method: 'download', name: suggestedName };
+    });
+  }
+
+  function commitArchive(until) {
+    return api('/archive-commit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ until: until })
+    });
+  }
+
+  function doArchive() {
+    var until = archiveUntilEl.value;
+    if (!until) {
+      setStatus('Укажите дату, до которой включительно нужно заархивировать данные', false);
+      archiveUntilEl.focus();
+      return;
+    }
+    btnArchiveEl.disabled = true;
+    archiveInfoEl.textContent = 'Подготовка архива…';
+    api('/archive-prepare', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ until: until })
+    }).then(function (res) {
+      var totalArchived = res.archivedAutoCount + res.archivedServiceCount;
+      if (!totalArchived) {
+        archiveInfoEl.textContent = '';
+        btnArchiveEl.disabled = false;
+        setStatus('Записей до ' + fmtDateRu(until) + ' включительно нет — архивировать нечего', false);
+        return;
+      }
+      var msg = 'Будет сохранено в архив и удалено из приложения: авто — ' + res.archivedAutoCount +
+        ', услуг — ' + res.archivedServiceCount + ' (до ' + fmtDateRu(until) + ' включительно).' +
+        ' Останется в таблице: авто — ' + res.remainingAutoCount + ', услуг — ' + res.remainingServiceCount + '.';
+      if (!confirm(msg + '\n\nВ открывшемся диалоге ОБЯЗАТЕЛЬНО выберите место сохранения файла архива.\nЕсли диалог будет отменён — данные НЕ удалятся.')) {
+        archiveInfoEl.textContent = '';
+        btnArchiveEl.disabled = false;
+        setStatus('Архивирование отменено', false);
+        return;
+      }
+      var text = buildArchiveTsv(res);
+      var name = suggestArchiveName(until);
+      return saveArchiveFile(text, name).then(function (saved) {
+        archiveInfoEl.textContent = 'Файл сохранён (' + saved.name + '), удаление записей из приложения…';
+        return commitArchive(until);
+      }).then(function (c) {
+        archiveInfoEl.textContent = '';
+        setStatus('✅ Архив сохранён: ' + name + '. Удалено записей: авто — ' + c.removedAuto + ', услуг — ' + c.removedService +
+          (c.preArchiveBackup ? '. Страховая копия всех данных: ' + c.preArchiveBackup : ''), true);
+        loadList();
+      });
+    }).catch(function (e) {
+      if (e && (e.name === 'AbortError')) {
+        archiveInfoEl.textContent = '';
+        setStatus('Сохранение файла отменено — данные НЕ архивированы и не удалены', false);
+      } else {
+        archiveInfoEl.textContent = '';
+        setStatus('❌ ' + (e ? e.message : 'Ошибка архивирования') , false);
+      }
+    }).finally(function () { btnArchiveEl.disabled = false; });
+  }
+
+  btnArchiveEl.addEventListener('click', doArchive);
 
   loadList();
 })();
