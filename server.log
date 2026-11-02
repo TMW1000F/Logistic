@@ -1,0 +1,28 @@
+📁 Путь к файлу данных: /workspace/data.json
+📁 Путь к файлу блокировки: /workspace/lock.json
+📁 Путь к файлу пользователей: /workspace/users.json
+📝 Создаю новый файл data.json...
+📝 Создаю новый файл users.json...
+✅ Файл data.json создан
+✅ Файл users.json создан
+⏰ Автобэкап: каждый день в 03:00, хранение 7 шт.
+
+🚀 Сервер запущен на http://localhost:3001
+🔧 build: service-v3 (если этой строки нет в логе — запущен СТАРЫЙ server.js)
+💾 Сервис бэкапов: http://localhost:3001/service (/workspace/service.html)
+📊 API доступен на http://localhost:3001/api
+💾 Данные хранятся в: /workspace/data.json
+👥 Пользователи хранятся в: /workspace/users.json
+
+📥 GET /api/data
+📝 POST /api/auth/register
+✅ Пользователи сохранены
+✅ Пользователь зарегистрирован: test
+📤 POST /api/data
+🔒 Блокировка установлена: PC-TEST (mvyqvf30)
+✅ Данные сохранены
+📥 GET /api/data
+📤 POST /api/data
+🔒 Блокировка установлена: PC-TEST (mvyqvf30)
+✅ Данные сохранены
+🔍 GET /api/lock

@@ -83,7 +83,6 @@ interface StoreContextType {
   state: AppState;
   dispatch: Dispatch<Action>;
   syncToServer: () => Promise<boolean>;
-  reloadFromServer: () => Promise<void>; // Актуализация данных с сервера (при старте/возврате на вкладку)
   isLocked: boolean;
   lockInfo: { userId: string; computerName: string } | null;
   isLoading: boolean;
@@ -101,17 +100,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Таймер debounce — в useRef, чтобы не вызывать лишний ре-рендер на каждое изменение
   const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [hasLoaded, setHasLoaded] = useState(false); // Флаг первой загрузки
-  // Актуальное состояние для асинхронных колбэков (видимость окна, syncToServer)
+  // Актуальное состояние для асинхронных колбэков (syncToServer)
   const stateRef = useRef(state);
   useEffect(() => { stateRef.current = state; }, [state]);
-  // Снимок состояния, последний раз сохранённый на сервер (для определения
-  // наличия несохранённых изменений перед перезагрузкой с сервера)
-  const lastSavedRef = useRef<string>('');
-  // Момент последнего изменения данных локально (в мс). Используется как
-  // дополнительная защита: сразу после изменения не перезагружаем данные
-  // с сервера, чтобы автосохранение ещё не успевшего записаться снимка
-  // не перетерлось устаревшим ответом.
-  const lastLocalChangeAtRef = useRef<number>(0);
+
 
   // Единственная точка применения статуса блокировки к состоянию стора
   // (раньше этот код дословно повторялся в полинг-эффекте, автосохранении
@@ -128,10 +120,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setIsLoading(true);
         const data = await fetchData();
         dispatch({ type: 'LOAD_STATE', payload: data });
-        // Отмечаем загруженный снимок как сохранённый — сразу после загрузки
-        // локальных изменений нет, и актуализация при фокусе не будет ложно
-        // пропускаться.
-        lastSavedRef.current = JSON.stringify(data);
         setError(null);
       } catch (err) {
         console.error('Ошибка загрузки с сервера:', err);
@@ -175,66 +163,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(interval);
   }, []);
 
-  // Принудительная перезагрузка данных с сервера.
-  // Используется при возврате фокуса на вкладку: если администратор
-  // архивировал записи или восстановил данные из бэкапа, открытое окно
-  // приложения держит в памяти (и в localStorage) устаревший снимок —
-  // и следующая автосохранённая запись перезаписывает сервер этим
-  // снимком, «восстанавливая» удалённые данные. Актуализация при каждом
-  // выходе на передний план закрывает эту гонку без перезагрузки страницы.
-  // ВАЖНО: если локально есть несохранённые изменения (например, только что
-  // удалённая запись ещё не ушла на сервер из-за debounce), перезагрузка
-  // проускается — иначе серверный снимок с уже удалённой записью вернёт её
-  // обратно в таблицу («записи не удаляются»).
-  const hasUnsavedChanges = () => {
-    if (!hasLoaded) return false;
-    const current = JSON.stringify(stateRef.current);
-    if (current !== lastSavedRef.current) return true;
-    // Дополнительная защита от гонок: сразу после локального изменения
-    // не перезагружаемся, даже если автосохранение формально завершилось.
-    return Date.now() - lastLocalChangeAtRef.current < 3000;
-  };
-
-  const reloadFromServer = async () => {
-    if (hasUnsavedChanges()) {
-      console.log('Есть несохранённые изменения — пропускаем актуализацию данных с сервера');
-      return;
-    }
-    try {
-      const data = await fetchData();
-      dispatch({ type: 'LOAD_STATE', payload: data });
-      // Синхронизируем резервную копию в localStorage, чтобы неавторизованный
-      // fallback тоже больше не поднимал устаревшие (заархивированные) записи.
-      localStorage.setItem('car_accounting_data', JSON.stringify(data));
-      setError(null);
-    } catch (err) {
-      // Сервер недоступен — оставляем текущие данные, ничего не перезаписываем.
-      console.error('Ошибка актуализации данных с сервера:', err);
-    }
-  };
-
-  // Автообновление данных при возврате на вкладку приложения (и при фокусе окна)
-  useEffect(() => {
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') reloadFromServer();
-    };
-    const handleFocus = () => reloadFromServer();
-
-    document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('focus', handleFocus);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, []);
+  // Загрузка данных с сервера выполняется ТОЛЬКО при первом запуске
+  // (см. эффект loadFromServer выше). Периодическое автообновление при
+  // фокусе/видимости окна намеренно удалено: оно конфликтовало с
+  // локальными действиями пользователя (в частности, с удалением записей)
+  // и возвращало в таблицу уже удалённые строки, если серверный снимок
+  // на момент ответа ещё содержал их.
 
   // Автосохранение на сервер при изменении состояния (с debounce)
   useEffect(() => {
     if (isLoading || !hasLoaded) return; // Не сохраняем при первой загрузке
-
-    // Фиксируем момент локального изменения — защита от актуализации
-    // с сервера в окне между изменением и завершением автосохранения.
-    lastLocalChangeAtRef.current = Date.now();
 
     // Очищаем предыдущий таймер
     if (syncTimeoutRef.current) {
@@ -266,8 +204,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           startLockExtension();
           applyLock(false, null);
           setError(null);
-          // Отмечаем, что именно этот снимок теперь лежит на сервере
-          lastSavedRef.current = JSON.stringify(state);
           // Также сохраняем в localStorage как backup
           localStorage.setItem('car_accounting_data', JSON.stringify(state));
         } else {
@@ -298,9 +234,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Функция для принудительной синхронизации. Сохраняет на сервер актуальное
-  // состояние (через stateRef, чтобы не зависеть от замыкания момента рендера)
-  // и помечает снимок как сохранённый — после этого разрешена актуализация
-  // данных с сервера при возврате фокуса окна.
+  // состояние (через stateRef, чтобы не зависеть от замыкания момента рендера).
   const syncToServer = async (): Promise<boolean> => {
     try {
       const currentUser = getCurrentUser();
@@ -312,7 +246,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (result.success) {
         applyLock(false, null);
         setError(null);
-        lastSavedRef.current = JSON.stringify(snapshot);
         localStorage.setItem('car_accounting_data', JSON.stringify(snapshot));
         return true;
       } else {
@@ -330,7 +263,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       state, 
       dispatch, 
       syncToServer,
-      reloadFromServer,
       isLocked,
       lockInfo,
       isLoading,
