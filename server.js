@@ -607,6 +607,64 @@ async function writeBackupIndex(list) {
   await fs.writeFile(path.join(BACKUP_DIR, 'index.json'), JSON.stringify(list, null, 2));
 }
 
+// ---------- Настройки автоматического бэкапа ----------
+// Хранятся в backups/settings.json. autoTime — время «HH:MM» (локальное),
+// autoKeepCount — сколько бэкапов хранить (старые удаляются автоматически).
+const BACKUP_SETTINGS_FILE = path.join(BACKUP_DIR, 'settings.json');
+const DEFAULT_BACKUP_SETTINGS = {
+  autoEnabled: true,   // ежедневный автобэкап по умолчанию включён
+  autoTime: '03:00',   // время создания (ЧЧ:ММ, локальный часовой пояс сервера)
+  keepCount: 7,        // количество хранимых бэкапов (автоудаление сверх этого числа)
+};
+
+function normalizeBackupSettings(raw) {
+  const s = { ...DEFAULT_BACKUP_SETTINGS, ...(raw && typeof raw === 'object' ? raw : {}) };
+  if (typeof s.autoEnabled !== 'boolean') s.autoEnabled = !!s.autoEnabled;
+  if (!/^([01]?\d|2[0-3]):[0-5]\d$/.test(String(s.autoTime || ''))) s.autoTime = DEFAULT_BACKUP_SETTINGS.autoTime;
+  let k = parseInt(s.keepCount, 10);
+  if (!Number.isFinite(k)) k = DEFAULT_BACKUP_SETTINGS.keepCount;
+  s.keepCount = Math.min(Math.max(k, 1), 1000);
+  return s;
+}
+
+async function readBackupSettings() {
+  try {
+    const raw = await fs.readFile(BACKUP_SETTINGS_FILE, 'utf-8');
+    return normalizeBackupSettings(JSON.parse(raw));
+  } catch {
+    return { ...DEFAULT_BACKUP_SETTINGS };
+  }
+}
+
+async function writeBackupSettings(settings) {
+  await ensureBackupDir();
+  const s = normalizeBackupSettings(settings);
+  await fs.writeFile(BACKUP_SETTINGS_FILE, JSON.stringify(s, null, 2));
+  return s;
+}
+
+let backupSettingsCache = { ...DEFAULT_BACKUP_SETTINGS };
+
+// Автоудаление старых бэкапов на основе настройки keepCount.
+// Удаляются самые старые записи индекса (сортировка по createdAt),
+// при этом бэкапы с пометкой «перед восстановлением» считаются страховочными,
+// но под правило хранения тоже попадают — иначе папка разрасталась бы бесконечно.
+async function enforceBackupRetention() {
+  const settings = backupSettingsCache;
+  const list = await readBackupIndex();
+  if (list.length <= settings.keepCount) return [];
+  const sorted = [...list].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+  const toRemove = sorted.slice(0, list.length - settings.keepCount);
+  const removeIds = new Set(toRemove.map(e => e.id));
+  for (const e of toRemove) {
+    await fs.unlink(path.join(BACKUP_DIR, e.filename)).catch(() => {});
+    console.log(`🗑 Автоудаление старого бэкапа: ${e.filename}`);
+  }
+  const kept = list.filter(e => !removeIds.has(e.id));
+  await writeBackupIndex(kept);
+  return toRemove;
+}
+
 // Создать бэкап текущего data.json. Возвращает запись индекса или null,
 // если файла данных нет.
 async function createBackupInternal(note) {
@@ -640,6 +698,8 @@ async function createBackupInternal(note) {
   list.unshift(entry);
   await writeBackupIndex(list);
   console.log(`💾 Бэкап создан: ${filename}${entry.note ? ` (${entry.note})` : ''}`);
+  // Автоудаление старых бэкапов в соответствии с настройкой количества хранимых копий
+  await enforceBackupRetention().catch(e => console.error('❌ Ошибка автоочистки бэкапов:', e));
   return entry;
 }
 
@@ -656,6 +716,80 @@ async function listBackups() {
     }
   }
   return out;
+}
+
+// ---------- Планировщик ежедневного автобэкапа ----------
+// Проверка каждые 30 секунд: если включён автобэкап, локальное время достигло
+// настроенной отметки ЧЧ:ММ и за эти сутки автобэкапа ещё не было — создаём его.
+// Флаг последнего автобэкапа хранится в памяти и на диске (lastAuto.json),
+// чтобы сервер после перезапуска не создавал повторную копию за те же сутки.
+let autoBackupTimer = null;
+let lastAutoBackupAt = null; // ISO-время последнего автобэкапа (для отображения в UI)
+
+async function readLastAutoBackup() {
+  try {
+    const raw = await fs.readFile(path.join(BACKUP_DIR, 'lastAuto.json'), 'utf-8');
+    const j = JSON.parse(raw);
+    return typeof j?.at === 'string' ? j.at : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeLastAutoBackup(iso) {
+  await ensureBackupDir();
+  await fs.writeFile(path.join(BACKUP_DIR, 'lastAuto.json'), JSON.stringify({ at: iso }));
+}
+
+function localDayKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function getNextAutoBackupTime() {
+  if (!backupSettingsCache.autoEnabled) return null;
+  const [h, m] = backupSettingsCache.autoTime.split(':').map(Number);
+  const now = new Date();
+  const next = new Date(now);
+  next.setHours(h, m, 0, 0);
+  if (next <= now) next.setDate(next.getDate() + 1);
+  return next.toISOString();
+}
+
+async function checkAutoBackup() {
+  if (!backupSettingsCache.autoEnabled) return;
+  const now = new Date();
+  const [h, m] = backupSettingsCache.autoTime.split(':').map(Number);
+  if (now.getHours() !== h || now.getMinutes() !== m) return;
+
+  const todayKey = localDayKey(now);
+  const lastKey = lastAutoBackupAt ? localDayKey(new Date(lastAutoBackupAt)) : null;
+  if (lastKey === todayKey) return; // уже создавали сегодня
+
+  const entry = await createBackupInternal(`авто: ежедневный бэкап ${backupSettingsCache.autoTime}`);
+  // Даже если файла данных нет — отмечаем попытку, чтобы не долбить лог каждую минуту
+  lastAutoBackupAt = new Date().toISOString();
+  await writeLastAutoBackup(lastAutoBackupAt);
+  if (entry) console.log(`⏰ Выполнен ежедневный автобэкап (запланировано на ${backupSettingsCache.autoTime})`);
+}
+
+function restartAutoBackupScheduler() {
+  if (autoBackupTimer) clearInterval(autoBackupTimer);
+  autoBackupTimer = setInterval(() => {
+    checkAutoBackup().catch(e => console.error('❌ Ошибка автобэкапа:', e));
+  }, 30 * 1000);
+  // не блокируем завершение процесса таймером
+  if (autoBackupTimer.unref) autoBackupTimer.unref();
+}
+
+async function initAutoBackup() {
+  backupSettingsCache = await readBackupSettings();
+  lastAutoBackupAt = await readLastAutoBackup();
+  restartAutoBackupScheduler();
+  // Страховая очистка при старте (например, настройки уменьшили задним числом)
+  await enforceBackupRetention().catch(e => console.error('❌ Ошибка автоочистки бэкапов при старте:', e));
+  console.log(
+    `⏰ Автобэкап: ${backupSettingsCache.autoEnabled ? `каждый день в ${backupSettingsCache.autoTime}, хранение ${backupSettingsCache.keepCount} шт.` : 'выключен'}`
+  );
 }
 
 // POST /api/backup — создать бэкап
@@ -690,10 +824,56 @@ app.get('/api/backup/list', async (req, res) => {
       currentRecords,
       locked: !!lock,
       lockedBy: lock ? lock.computerName : null,
+      settings: backupSettingsCache,
+      lastAutoBackupAt,
+      nextAutoBackupAt: getNextAutoBackupTime(),
     });
   } catch (error) {
     console.error('❌ Ошибка списка бэкапов:', error);
     res.status(500).json({ error: 'Ошибка получения списка бэкапов' });
+  }
+});
+
+// GET /api/backup/settings — настройки автобэкапа
+app.get('/api/backup/settings', async (req, res) => {
+  try {
+    res.json({
+      settings: backupSettingsCache,
+      lastAutoBackupAt,
+      nextAutoBackupAt: getNextAutoBackupTime(),
+    });
+  } catch (error) {
+    console.error('❌ Ошибка чтения настроек бэкапа:', error);
+    res.status(500).json({ error: 'Ошибка чтения настроек' });
+  }
+});
+
+// PUT /api/backup/settings — сохранить настройки автобэкапа
+// Тело: { autoEnabled: bool, autoTime: "HH:MM", keepCount: number }
+app.put('/api/backup/settings', async (req, res) => {
+  try {
+    const body = (req.body && typeof req.body === 'object') ? req.body : {};
+    const errors = [];
+    if (body.autoTime !== undefined && !/^([01]?\d|2[0-3]):[0-5]\d$/.test(String(body.autoTime))) {
+      errors.push('Некорректное время (ожидается ЧЧ:ММ)');
+    }
+    if (body.keepCount !== undefined) {
+      const k = parseInt(body.keepCount, 10);
+      if (!Number.isFinite(k) || k < 1 || k > 1000) errors.push('Количество хранимых бэкапов должно быть от 1 до 1000');
+    }
+    if (errors.length) return res.status(400).json({ error: errors.join('; ') });
+
+    const merged = normalizeBackupSettings({ ...backupSettingsCache, ...body });
+    await writeBackupSettings(merged);
+    backupSettingsCache = merged;
+    restartAutoBackupScheduler(); // пересчитать расписание с новым временем
+    // Если уменьшили количество хранимых копий — сразу чистим старые
+    const removed = await enforceBackupRetention();
+    console.log(`⚙️ Настройки автобэкапа обновлены: ${JSON.stringify(merged)}${removed.length ? ` (автоудалено старых: ${removed.length})` : ''}`);
+    res.json({ success: true, settings: backupSettingsCache, removed: removed.length });
+  } catch (error) {
+    console.error('❌ Ошибка сохранения настроек бэкапа:', error);
+    res.status(500).json({ error: 'Ошибка сохранения настроек' });
   }
 });
 
@@ -903,10 +1083,11 @@ app.get('/{*splat}', (req, res) => {
 });
 
 // Запуск сервера
-Promise.all([initDataFile(), initUsersFile()]).then(() => {
+Promise.all([initDataFile(), initUsersFile()]).then(async () => {
+  await initAutoBackup().catch(e => console.error('❌ Ошибка инициализации автобэкапа:', e));
   app.listen(PORT, () => {
     console.log(`\n🚀 Сервер запущен на http://localhost:${PORT}`);
-    console.log(`🔧 build: service-v2 (если этой строки нет в логе — запущен СТАРЫЙ server.js)`)
+    console.log(`🔧 build: service-v3 (если этой строки нет в логе — запущен СТАРЫЙ server.js)`)
     console.log(`💾 Сервис бэкапов: http://localhost:${PORT}/service (${SERVICE_PAGE_FILE ? SERVICE_PAGE_FILE : 'service.html НЕ НАЙДЕН!'})`);
     console.log(`📊 API доступен на http://localhost:${PORT}/api`);
     console.log(`💾 Данные хранятся в: ${DATA_FILE}`);
