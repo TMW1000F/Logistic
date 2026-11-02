@@ -140,9 +140,9 @@ export default function TariffsTab({ darkMode = false, readOnly = false }: Props
   };
 
   return (
-    <div className="h-full overflow-auto space-y-4">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Левая часть - форма */}
+    <div className="h-full overflow-auto space-y-4 flex flex-col">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-4 flex-1 min-h-0 items-stretch">
+        {/* Левая часть - форма (в 2 раза уже списка тарифов) */}
         {!readOnly && (
         <div className={`rounded-lg p-4 space-y-4 ${darkMode ? 'bg-gray-800' : 'bg-white border border-gray-200'}`}>
           <h3 className={`font-bold text-sm border-b pb-2 ${darkMode ? 'text-gray-200 border-gray-700' : 'text-gray-700 border-gray-200'}`}>💰 Редактирование тарифов</h3>
@@ -240,11 +240,11 @@ export default function TariffsTab({ darkMode = false, readOnly = false }: Props
         </div>
         )}
 
-        {/* Правая часть - таблица тарифов */}
-        <div className={`rounded-lg p-4 ${darkMode ? 'bg-gray-800' : 'bg-white border border-gray-200'}`}>
-          <h3 className={`font-bold text-sm mb-3 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>📋 Список тарифов ({filteredTariffs.length})</h3>
+        {/* Правая часть - таблица тарифов (растягивается на всю высоту страницы) */}
+        <div className={`rounded-lg p-4 flex flex-col min-h-[500px] ${darkMode ? 'bg-gray-800' : 'bg-white border border-gray-200'}`}>
+          <h3 className={`font-bold text-sm mb-3 flex-shrink-0 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>📋 Список тарифов ({filteredTariffs.length})</h3>
           
-          <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+          <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0">
             <table className="w-full text-sm">
               <thead className={`sticky top-0 ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
                 <tr>
