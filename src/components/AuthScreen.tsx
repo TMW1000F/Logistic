@@ -69,6 +69,9 @@ export default function AuthScreen({ onAuthSuccess, onReadOnlyMode, darkMode }: 
           <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
             АО «Логистик-Центр»
           </p>
+          <p className={`text-sm font-bold mt-2 ${darkMode ? 'text-red-400' : 'text-red-600'}`}>
+            Если вам нет необходимости редактировать данные, нажмите кнопку «Только просмотр», чтобы не мешать работе других пользователей.
+          </p>
         </div>
 
         {/* Переключатель режима */}
