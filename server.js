@@ -720,25 +720,43 @@ async function listBackups() {
 
 // ---------- Планировщик ежедневного автобэкапа ----------
 // Проверка каждые 30 секунд: если включён автобэкап, локальное время достигло
-// настроенной отметки ЧЧ:ММ и за эти сутки автобэкапа ещё не было — создаём его.
-// Флаг последнего автобэкапа хранится в памяти и на диске (lastAuto.json),
+// настроенной отметки ЧЧ:ММ и в этом «окне срабатывания» автобэкапа ещё не было —
+// создаём его. В одни сутки создаётся ровно один бэкап — таково условие задачи
+// («бэкап создается каждый день в определенное время»). Окно срабатывания
+// привязано к конкретной дате и времени (ключ вида 2026-11-02T03:00), поэтому:
+//  - перенос времени на более раннее в тот же день НЕ вызывает второй бэкап
+//    (это защита от случайного/злонамеренного флуда — иначе каждое изменение
+//    времени сразу плодило бы копию);
+//  - следующий бэкап — в следующее срабатывание расписания (на следующий день
+//    либо позже в тот же день, если время ещё не наступило).
+// Ключ последнего срабатывания хранится в памяти и на диске (lastAuto.json),
 // чтобы сервер после перезапуска не создавал повторную копию за те же сутки.
 let autoBackupTimer = null;
-let lastAutoBackupAt = null; // ISO-время последнего автобэкапа (для отображения в UI)
+let lastAutoTriggerKey = null; // ключ окна срабатывания: YYYY-MM-DDTHH:MM (локальное время)
+let lastAutoBackupAt = null;   // ISO-время последнего автобэкапа (для отображения в UI)
 
-async function readLastAutoBackup() {
+const AUTO_TRIGGER_FILE = 'lastAuto.json';
+
+async function readLastAutoState() {
+  let triggerKey = null;
+  let at = null;
   try {
-    const raw = await fs.readFile(path.join(BACKUP_DIR, 'lastAuto.json'), 'utf-8');
+    const raw = await fs.readFile(path.join(BACKUP_DIR, AUTO_TRIGGER_FILE), 'utf-8');
     const j = JSON.parse(raw);
-    return typeof j?.at === 'string' ? j.at : null;
-  } catch {
-    return null;
+    if (typeof j?.triggerKey === 'string') triggerKey = j.triggerKey;
+    if (typeof j?.at === 'string') at = j.at;
+  } catch { /* первый запуск */ }
+  // Совместимость со старым форматом файла ({ at }) — восстановим ключ из времени
+  if (!triggerKey && at) {
+    const d = new Date(at);
+    if (!isNaN(d)) triggerKey = `${localDayKey(d)}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   }
+  return { triggerKey, at };
 }
 
-async function writeLastAutoBackup(iso) {
+async function writeLastAutoState(triggerKey, iso) {
   await ensureBackupDir();
-  await fs.writeFile(path.join(BACKUP_DIR, 'lastAuto.json'), JSON.stringify({ at: iso }));
+  await fs.writeFile(path.join(BACKUP_DIR, AUTO_TRIGGER_FILE), JSON.stringify({ triggerKey, at: iso }));
 }
 
 function localDayKey(d) {
@@ -761,14 +779,16 @@ async function checkAutoBackup() {
   const [h, m] = backupSettingsCache.autoTime.split(':').map(Number);
   if (now.getHours() !== h || now.getMinutes() !== m) return;
 
-  const todayKey = localDayKey(now);
-  const lastKey = lastAutoBackupAt ? localDayKey(new Date(lastAutoBackupAt)) : null;
-  if (lastKey === todayKey) return; // уже создавали сегодня
+  // Срабатывание привязано к окну «сутки + запланированное время»: одно окно —
+  // одна копия. За сутки, соответственно, ровно один автобэкап.
+  const triggerKey = `${localDayKey(now)}T${backupSettingsCache.autoTime}`;
+  if (triggerKey === lastAutoTriggerKey) return; // это окно уже отработано
 
   const entry = await createBackupInternal(`авто: ежедневный бэкап ${backupSettingsCache.autoTime}`);
   // Даже если файла данных нет — отмечаем попытку, чтобы не долбить лог каждую минуту
+  lastAutoTriggerKey = triggerKey;
   lastAutoBackupAt = new Date().toISOString();
-  await writeLastAutoBackup(lastAutoBackupAt);
+  await writeLastAutoState(triggerKey, lastAutoBackupAt);
   if (entry) console.log(`⏰ Выполнен ежедневный автобэкап (запланировано на ${backupSettingsCache.autoTime})`);
 }
 
@@ -783,7 +803,9 @@ function restartAutoBackupScheduler() {
 
 async function initAutoBackup() {
   backupSettingsCache = await readBackupSettings();
-  lastAutoBackupAt = await readLastAutoBackup();
+  const st = await readLastAutoState();
+  lastAutoTriggerKey = st.triggerKey;
+  lastAutoBackupAt = st.at;
   restartAutoBackupScheduler();
   // Страховая очистка при старте (например, настройки уменьшили задним числом)
   await enforceBackupRetention().catch(e => console.error('❌ Ошибка автоочистки бэкапов при старте:', e));
