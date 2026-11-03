@@ -40,18 +40,42 @@ export default function TariffsTab({ darkMode = false, readOnly = false }: Props
       return;
     }
 
+    const trimmedCategory = category.trim();
+    const trimmedCarrier = carrier.trim();
+
+    // Защита от дублей при добавлении нового тарифа: если в списке уже
+    // есть запись с такой же связкой тип + категория + компания, просто
+    // обновляем её цену (иначе получили бы два одинаковых тарифа).
+    if (!editingId) {
+      const duplicate = state.tariffs.find(
+        t => t.type === tariffType && t.category === trimmedCategory && t.carrier === trimmedCarrier
+      );
+      if (duplicate) {
+        dispatch({
+          type: 'UPDATE_TARIFF',
+          payload: { ...duplicate, price: Math.round(priceNum * 100) / 100 },
+        });
+        clearForm();
+        toast.success('Тариф обновлён (найдена такая же категория и компания)');
+        return;
+      }
+    }
+
     const tariff: Tariff = {
       id: editingId || generateId(),
       type: tariffType,
-      category: category.trim(),
-      carrier: carrier.trim(),
+      category: trimmedCategory,
+      carrier: trimmedCarrier,
       price: Math.round(priceNum * 100) / 100,
       payment_type: tariffType === 'service' ? paymentType : 'hourly',
     };
 
-    dispatch({ type: 'ADD_TARIFF', payload: tariff });
+    // Редактирование — обновляем существующий тариф строго по id
+    // (раньше уходил ADD_TARIFF, из-за чего старый тариф мог оставаться
+    // в списке и появлялся «дубль»). Новое добавление — ADD_TARIFF.
+    dispatch(editingId ? { type: 'UPDATE_TARIFF', payload: tariff } : { type: 'ADD_TARIFF', payload: tariff });
     clearForm();
-    toast.success('Тариф сохранён');
+    toast.success(editingId ? 'Тариф обновлён' : 'Тариф сохранён');
   };
 
   // Редактирование
@@ -68,6 +92,9 @@ export default function TariffsTab({ darkMode = false, readOnly = false }: Props
   const handleDelete = (id: string) => {
     if (confirm('Удалить выбранный тариф?')) {
       dispatch({ type: 'DELETE_TARIFF', payload: id });
+      // Если удалили тариф, который в данный момент редактируется в форме,
+      // сбрасываем форму, чтобы «призрак» удалённого id не остался в редакторе.
+      if (editingId === id) clearForm();
       toast.success('Тариф удалён');
     }
   };

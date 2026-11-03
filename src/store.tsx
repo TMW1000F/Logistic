@@ -18,6 +18,7 @@ type Action =
   | { type: 'ADD_SERVICE_RECORD'; payload: ServiceRecord }
   | { type: 'DELETE_SERVICE_RECORD'; payload: string }
   | { type: 'ADD_TARIFF'; payload: Tariff }
+  | { type: 'UPDATE_TARIFF'; payload: Tariff }
   | { type: 'DELETE_TARIFF'; payload: string }
   | { type: 'SET_TARIFFS'; payload: Tariff[] }
   | { type: 'SAVE_CAR'; payload: CarInBase }
@@ -39,12 +40,31 @@ function reducer(state: AppState, action: Action): AppState {
     case 'DELETE_SERVICE_RECORD':
       return { ...state, serviceRecords: state.serviceRecords.filter(r => r.id !== action.payload) };
     case 'ADD_TARIFF': {
-      const filtered = state.tariffs.filter(
-        t => !(t.type === action.payload.type && t.category === action.payload.category && t.carrier === action.payload.carrier)
+      // Дубликаты (та же связка type+category+carrier) не добавляем:
+      // обновляем цену/тип оплаты существующего тарифа.
+      const existing = state.tariffs.find(
+        t => t.type === action.payload.type && t.category === action.payload.category && t.carrier === action.payload.carrier
       );
-      return { ...state, tariffs: [...filtered, action.payload] };
+      if (existing) {
+        return {
+          ...state,
+          tariffs: state.tariffs.map(t =>
+            t.id === existing.id ? { ...t, price: action.payload.price, payment_type: action.payload.payment_type } : t
+          ),
+        };
+      }
+      return { ...state, tariffs: [...state.tariffs, action.payload] };
+    }
+    case 'UPDATE_TARIFF': {
+      // Обновление строго по id — только этот тариф меняется,
+      // никакие другие строки не удаляются и не дублируются.
+      return {
+        ...state,
+        tariffs: state.tariffs.map(t => (t.id === action.payload.id ? action.payload : t)),
+      };
     }
     case 'DELETE_TARIFF':
+      // Удаление строго по id — удаляется ровно один выбранный тариф.
       return { ...state, tariffs: state.tariffs.filter(t => t.id !== action.payload) };
     case 'SET_TARIFFS':
       return { ...state, tariffs: action.payload };
