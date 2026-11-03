@@ -1,4 +1,4 @@
-import { Dispatch, createContext, useContext, useReducer, useEffect, useRef, ReactNode, useState } from 'react';
+import { Dispatch, createContext, useContext, useReducer, useEffect, useRef, ReactNode, useState, useMemo } from 'react';
 import { AppState, CarInBase, CarRecord, ServiceRecord, Tariff } from './types';
 import { fetchData, updateData, startLockExtension, stopLockExtension, getLockInfo, getCurrentUser } from './api';
 
@@ -113,7 +113,41 @@ interface StoreContextType {
 const StoreContext = createContext<StoreContextType | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, initialState);
+  // Флаг «в состоянии есть несохранённые локальные изменения». Ставится в
+  // reducer-обёртке при любом изменяющем действии и сбрасывается после
+  // успешной записи на сервер / загрузки с сервера. Нужен, чтобы фоновые
+  // операции (первичная загрузка, refreshFromServer) не могли перезаписать
+  // экран устаревшим серверным снимком, пока пользователь уже внёс правки —
+  // отсюда эффекты «старый тариф вернулся», «удалился не тот».
+  const dirtyRef = useRef(false);
+
+  // === Мгновенная запись изменений тарифов на сервер ====================
+  // Проблема: автосохранение имеет debounce 2 секунды и НЕ пишет на сервер,
+  // если пользователь не авторизован (только в localStorage). Если в течение
+  // этих секунд обновить страницу (F5), изменение существует лишь в памяти
+  // браузера и теряется («новый тариф исчез после обновления страницы»).
+  // Поэтому действия с тарифами помечаются как «ждут немедленной записи», а
+  // эффект ниже сразу после dispatch запускает сохранение, не дожидаясь
+  // debounce-таймера.
+  const pendingTariffSyncRef = useRef(false);
+
+  // Обёртка над reducer: любое изменяющее действие помечает состояние как
+  // «грязное» (кроме LOAD_STATE/CLEAR_ALL — они сами приходят с сервера),
+  // а действия с тарифами дополнительно просят немедленную запись на сервер.
+  // useMemo([]) — стабильная ссылка, чтобы useReducer не пересоздавался.
+  const reducerWithDirty = useMemo(() => {
+    return (s: AppState, a: Action): AppState => {
+      if (a.type !== 'LOAD_STATE' && a.type !== 'CLEAR_ALL') {
+        dirtyRef.current = true;
+      }
+      if (a.type === 'ADD_TARIFF' || a.type === 'UPDATE_TARIFF' || a.type === 'DELETE_TARIFF' || a.type === 'SET_TARIFFS') {
+        pendingTariffSyncRef.current = true;
+      }
+      return reducer(s, a);
+    };
+  }, []);
+
+  const [state, dispatch] = useReducer(reducerWithDirty, initialState);
   const [isLocked, setIsLocked] = useState(false);
   const [lockInfo, setLockInfo] = useState<{ userId: string; computerName: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -139,13 +173,46 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setLockInfo(info);
   };
 
+  // Эффект-исполнитель немедленного сохранения тарифов: срабатывает на
+  // каждое изменение состояния, но реально пишет только если редьюсер
+  // оставил флаг pendingTariffSyncRef. Отменяем debounce-таймер, чтобы не
+  // отправить второй идентичный POST через 2 секунды.
+  useEffect(() => {
+    if (!pendingTariffSyncRef.current) return;
+    pendingTariffSyncRef.current = false;
+    if (syncTimeoutRef.current) {
+      clearTimeout(syncTimeoutRef.current);
+      syncTimeoutRef.current = null;
+    }
+    // Мгновенно пишем резервную копию в localStorage — она не зависит от
+    // авторизации/блокировки и переживёт обновление страницы даже если
+    // сервер недоступен или запись отклонена блокировкой.
+    try { localStorage.setItem('car_accounting_data', JSON.stringify(state)); } catch { /* noop */ }
+    // Сохраняем актуальный stateRef.current (эффект вызван после рендера
+    // с новым состоянием, поэтому ref уже обновлён).
+    syncToServer().catch(() => {
+      /* ошибка уже обработана внутри syncToServer */
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
   // Загрузка данных с сервера при старте
   useEffect(() => {
     async function loadFromServer() {
       try {
         setIsLoading(true);
         const data = await fetchData();
+        // Если между отправкой запроса и ответом пользователь уже успел
+        // что-то изменить локально (например, сохранил тариф до того, как
+        // ответил медленный сервер), НЕ перезаписываем экран устаревшим
+        // снимком — вместо этого сразу отправляем локальное состояние на
+        // сервер (см. syncToServer ниже).
+        if (dirtyRef.current) {
+          syncToServer().catch(() => {});
+          return;
+        }
         dispatch({ type: 'LOAD_STATE', payload: data });
+        localStorage.setItem('car_accounting_data', JSON.stringify(data));
         setError(null);
       } catch (err) {
         console.error('Ошибка загрузки с сервера:', err);
@@ -230,6 +297,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const authUserId = currentUser.id;
         const result = await updateData(state, authUserId, displayName);
         if (result.success) {
+          // Сервер подтвердил запись — локальных несохранённых изменений больше нет
+          dirtyRef.current = false;
           // Продлеваем блокировку чаще, чем истекает её TTL (5 мин):
           // иначе файл успевал удалиться и следующий пользователь видел «пустой» lock.json.
           startLockExtension();
@@ -275,6 +344,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const snapshot = stateRef.current;
       const result = await updateData(snapshot, currentUser.id, currentUser.displayName);
       if (result.success) {
+        dirtyRef.current = false; // запись подтверждена сервером
         applyLock(false, null);
         setError(null);
         localStorage.setItem('car_accounting_data', JSON.stringify(snapshot));
@@ -310,6 +380,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         syncTimeoutRef.current = null;
       }
       const data = await fetchData();
+      // Если за время запроса пользователь успел что-то изменить локально,
+      // не затираем его изменения серверным снимком.
+      if (dirtyRef.current) return;
       dispatch({ type: 'LOAD_STATE', payload: data });
       localStorage.setItem('car_accounting_data', JSON.stringify(data));
       setError(null);
