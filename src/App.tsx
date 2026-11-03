@@ -9,7 +9,7 @@ import TariffsTab from './components/TariffsTab';
 import CarsTab from './components/CarsTab';
 import StatsTab from './components/StatsTab';
 import { Car, Wrench, BarChart3, DollarSign, TrendingUp, HelpCircle, Save, FolderOpen, FilePlus, Sun, Moon, LogOut, Eye, Lock, Database } from 'lucide-react';
-import { calcDurationHours, calcAutoCost, calcServiceHours, calcServiceCost, formatDate, generateId } from './types';
+import { calcDurationHours, calcAutoCost, calcServiceHours, calcServiceCost, formatDate, parseDateToISO, generateId } from './types';
 import { 
   getCurrentUser, 
   logout, 
@@ -380,17 +380,24 @@ function AppContent() {
         const dataLines = lines.slice(1);
         const autoRecords: any[] = [];
         const serviceRecords: any[] = [];
+        let skippedBadDates = 0;
         
         for (const line of dataLines) {
           const cols = line.split('\t');
           if (cols.length < 12) continue;
           
           const type = cols[0];
-          const dateStr = cols[10]; // DD-MM-YYYY
+          const dateStr = cols[10]; // поддерживаем ДД-ММ-ГГГГ, ДД.ММ.ГГГГ, ДД/ММ/ГГГГ и ISO ГГГГ-ММ-ДД
           
-          // Парсим дату
-          const [day, month, year] = dateStr.split('-');
-          const date = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+          // Парсим дату универсальным парсером (раньше здесь было жёсткое
+          // split('-'), из-за чего файл, сохранённый самим приложением с датами
+          // вида '01.10.2026', падал с ошибкой
+          // "Cannot read properties of undefined (reading 'padStart')").
+          const date = parseDateToISO(dateStr);
+          if (!date) {
+            skippedBadDates++;
+            continue; // строку с нераспознанной датой не импортируем — иначе получим битую запись
+          }
           
           // Парсим время
           const timeStr = cols[6];
@@ -438,6 +445,15 @@ function AppContent() {
           }
         }
         
+        if (autoRecords.length === 0 && serviceRecords.length === 0) {
+          toast.error(
+            skippedBadDates > 0
+              ? `Не удалось распознать даты ни в одной строке (${skippedBadDates} шт.). Ожидаемый формат: ДД.ММ.ГГГГ или ДД-ММ-ГГГГ`
+              : 'В файле нет подходящих строк данных'
+          );
+          return;
+        }
+
         // Спрашиваем пользователя: добавить или заменить
         const hasExistingData = state.autoRecords.length > 0 || state.serviceRecords.length > 0;
         let mode: 'add' | 'replace' = 'replace';
@@ -476,7 +492,10 @@ function AppContent() {
           });
         }
         
-        toast.success(`Загружено: авто — ${autoRecords.length}, услуг — ${serviceRecords.length} (${mode === 'replace' ? 'замена' : 'добавление'})`);
+        toast.success(
+          `Загружено: авто — ${autoRecords.length}, услуг — ${serviceRecords.length} (${mode === 'replace' ? 'замена' : 'добавление'})` +
+          (skippedBadDates > 0 ? `. Пропущено строк с нераспознанной датой: ${skippedBadDates}` : '')
+        );
       } catch (err) {
         toast.error('Ошибка чтения файла: ' + (err as Error).message);
       }

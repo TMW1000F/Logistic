@@ -130,6 +130,36 @@ export function formatDate(dateStr: string): string {
   return `${d}.${m}.${y}`;
 }
 
+// Обратная функция к formatDate: парсит дату из ЛЮБОГО распространённого
+// формата и возвращает канонический ISO-формат 'YYYY-MM-DD' (или null, если
+// строку распознать не удалось). Поддерживаются:
+//   - 'YYYY-MM-DD' и 'YYYY.MM.DD' / 'YYYY/MM/DD' (ISO с любым разделителем);
+//   - 'DD-MM-YYYY', 'DD.MM.YYYY', 'DD/MM/YYYY' (европейский порядок);
+//   - 'M-D-YY' / 'D.M.YY' (краткие год/месяц/день — дописываются до 4 цифр).
+// Это нужно для импорта файлов: приложение сохраняет даты как 'ДД.ММ.ГГГГ',
+// а загрузчик раньше понимал только 'ДД-ММ-ГГГГ', из-за чего на точках в
+// дате падал с ошибкой "Cannot read properties of undefined (reading 'padStart')".
+export function parseDateToISO(raw: string | undefined | null): string | null {
+  if (!raw) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+
+  let m = s.match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})$/); // ISO-ish: YYYY first
+  if (m) {
+    const [, y, mo, d] = m;
+    return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+
+  m = s.match(/^(\d{1,2})[-./](\d{1,2})[-./](\d{2,4})$/); // EU: DD first
+  if (m) {
+    const [, d, mo, yy] = m;
+    const y = yy.length === 2 ? `20${yy}` : yy;
+    return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+
+  return null; // не распознано — пусть вызывающий код сам решит, что делать
+}
+
 // Единый генератор ID для всего приложения (crypto.randomUUID с fallback).
 // Использовать ТОЛЬКО эту функцию — инлайн-генерации через Math.random()
 // давали коллизии при импорте больших файлов.
