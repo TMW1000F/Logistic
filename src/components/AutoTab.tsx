@@ -51,10 +51,16 @@ export default function AutoTab({ darkMode = false, readOnly = false }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterTags, setFilterTags] = useState<FilterTag[]>([]);
 
-  // Фильтр по интервалу дат
-  const [dateRangeEnabled, setDateRangeEnabled] = useState(false);
-  const [dateRangeStart, setDateRangeStart] = useState(new Date().toISOString().split('T')[0]);
-  const [dateRangeEnd, setDateRangeEnd] = useState(new Date().toISOString().split('T')[0]);
+  // Фильтр по интервалу дат (по умолчанию — текущий месяц)
+  const [monthStart, monthEnd] = useMemo(() => {
+    const n = new Date();
+    const ym = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`;
+    const lastDay = new Date(n.getFullYear(), n.getMonth() + 1, 0).getDate();
+    return [`${ym}-01`, `${ym}-${String(lastDay).padStart(2, '0')}`];
+  }, []);
+  const [dateRangeEnabled, setDateRangeEnabled] = useState(true);
+  const [dateRangeStart, setDateRangeStart] = useState(monthStart);
+  const [dateRangeEnd, setDateRangeEnd] = useState(monthEnd);
 
   // Множественный выбор
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());

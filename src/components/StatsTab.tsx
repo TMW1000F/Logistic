@@ -10,8 +10,10 @@ interface Props {
 export default function StatsTab({ darkMode = false, readOnly = false }: Props) {
   const { state } = useStore();
 
-  const defaultEnd = new Date().toISOString().split('T')[0];
-  const defaultStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  // По умолчанию — текущий год
+  const now = new Date();
+  const defaultStart = `${now.getFullYear()}-01-01`;
+  const defaultEnd = `${now.getFullYear()}-12-31`;
 
   const [startDate, setStartDate] = useState(defaultStart);
   const [endDate, setEndDate] = useState(defaultEnd);

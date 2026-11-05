@@ -16,11 +16,12 @@ export default function ResultsTab({ darkMode = false, readOnly = false }: Props
   const [mode, setMode] = useState<'auto_only' | 'all' | 'services_only'>('all');
   const [startDate, setStartDate] = useState(() => {
     const now = new Date();
-    return `${now.getFullYear()}-01-01`;
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
   });
   const [endDate, setEndDate] = useState(() => {
     const now = new Date();
-    return `${now.getFullYear()}-12-31`;
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
   });
   const [selectedCarrier, setSelectedCarrier] = useState('');
   const [selectedRow, setSelectedRow] = useState<number | null>(null);
