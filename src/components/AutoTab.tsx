@@ -413,119 +413,135 @@ export default function AutoTab({ darkMode = false, readOnly = false }: Props) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Sticky форма ввода */}
-      {!readOnly && (
+      {/* Панель формы / фильтров — видна всегда, в т.ч. в режиме «Только просмотр» */}
       <div className={`flex-shrink-0 rounded-lg p-3 mb-2 ${darkMode ? 'bg-gray-800' : 'bg-white border border-gray-200'}`}>
         {/* Одна строка: все поля и кнопки */}
         <div className="flex flex-wrap items-end gap-2">
-          <div className="relative min-w-[220px] flex-1 max-w-xs">
-            <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Автомобиль (из базы):</label>
-            <div className="flex gap-1">
-              <input
-                type="text"
-                value={plateQuery}
-                onChange={e => handlePlateInput(e.target.value)}
-                onFocus={() => setShowDropdown(true)}
-                onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
-                onKeyDown={e => handleKeyDown(e, 'plate')}
-                placeholder="Начните вводить номер..."
-                className={`w-full border rounded px-2 py-1 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400 ${
-                  selectedCar
-                    ? (darkMode ? 'bg-gray-700 border-green-500 text-white' : 'border-green-500')
-                    : (darkMode ? 'bg-gray-700 border-gray-600 text-white' : '')
-                }`}
-              />
-              {selectedCarId && (
-                <button
-                  type="button"
-                  onMouseDown={e => { e.preventDefault(); selectCar(null); }}
-                  title="Сбросить выбор"
-                  className={`px-2 rounded text-xs ${darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-            {showDropdown && (
-              <div className={`absolute z-30 left-0 right-0 top-full mt-1 max-h-60 overflow-auto rounded-md border shadow-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'}`}>
-                {plateSuggestions.length === 0 ? (
-                  <div className={`px-3 py-2 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                    Ничего не найдено. Добавьте автомобиль во вкладке «База автомобилей».
-                  </div>
-                ) : (
-                  <>
-                    {plateSuggestions.map(c => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onMouseDown={e => { e.preventDefault(); selectCar(c); }}
-                        onMouseEnter={() => setHighlightedIdx(plateSuggestions.findIndex(x => x.id === c.id))}
-                        className={`w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 ${
-                          idxInList(c.id) === highlightedIdx && showDropdown
-                            ? (darkMode ? 'bg-blue-800 text-white' : 'bg-blue-600 text-white')
-                            : c.id === selectedCarId
-                              ? (darkMode ? 'bg-blue-900/50 text-blue-200' : 'bg-blue-100 text-blue-800')
-                              : (darkMode ? 'text-gray-100' : '')
-                        }`}
-                      >
-                        <span className="font-mono font-semibold">{c.display}</span>
-                        <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{c.car_type} · {c.carrier}</span>
-                      </button>
-                    ))}
-                    {plateQuery.trim() && !isValidPlateFormat(plateQuery) && (
-                      <div className={`px-3 py-1.5 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{plateFormatHint()}</div>
-                    )}
-                  </>
+          {!readOnly && (
+            <div className="relative min-w-[220px] flex-1 max-w-xs">
+              <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Автомобиль (из базы):</label>
+              <div className="flex gap-1">
+                <input
+                  type="text"
+                  value={plateQuery}
+                  onChange={e => handlePlateInput(e.target.value)}
+                  onFocus={() => setShowDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
+                  onKeyDown={e => handleKeyDown(e, 'plate')}
+                  placeholder="Начните вводить номер..."
+                  className={`w-full border rounded px-2 py-1 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400 ${
+                    selectedCar
+                      ? (darkMode ? 'bg-gray-700 border-green-500 text-white' : 'border-green-500')
+                      : (darkMode ? 'bg-gray-700 border-gray-600 text-white' : '')
+                  }`}
+                />
+                {selectedCarId && (
+                  <button
+                    type="button"
+                    onMouseDown={e => { e.preventDefault(); selectCar(null); }}
+                    title="Сбросить выбор"
+                    className={`px-2 rounded text-xs ${darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                  >
+                    ✕
+                  </button>
                 )}
               </div>
-            )}
-          </div>
-          <div>
-            <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Дата:</label>
-            <input
-              type="date"
-              value={date}
-              onChange={e => setDate(e.target.value)}
-              className={`border rounded px-2 py-1 text-sm w-36 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
-            />
-          </div>
-          <div>
-            <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Прибытие:</label>
-            <select
-              value={arrival}
-              onChange={e => setArrival(e.target.value)}
-              className={`border rounded px-2 py-1 text-sm w-28 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
-            >
-              {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Убытие:</label>
-            <select
-              value={departure}
-              onChange={e => setDeparture(e.target.value)}
-              className={`border rounded px-2 py-1 text-sm w-28 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
-            >
-              {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-          <div className="flex items-center gap-1">
-            <input
-              type="checkbox"
-              checked={useCoefficient}
-              onChange={e => setUseCoefficient(e.target.checked)}
-              id="auto_coef"
-            />
-            <label htmlFor="auto_coef" className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Коэф.:</label>
-            <input
-              type="text"
-              value={coefficient}
-              onChange={e => setCoefficient(e.target.value)}
-              disabled={!useCoefficient}
-              className={`w-14 border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
-            />
-          </div>
-          <div className="flex items-center gap-1 border-l pl-2 ml-1">
+              {showDropdown && (
+                <div className={`absolute z-30 left-0 right-0 top-full mt-1 max-h-60 overflow-auto rounded-md border shadow-lg ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'}`}>
+                  {plateSuggestions.length === 0 ? (
+                    <div className={`px-3 py-2 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      Ничего не найдено. Добавьте автомобиль во вкладке «База автомобилей».
+                    </div>
+                  ) : (
+                    <>
+                      {plateSuggestions.map(c => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onMouseDown={e => { e.preventDefault(); selectCar(c); }}
+                          onMouseEnter={() => setHighlightedIdx(plateSuggestions.findIndex(x => x.id === c.id))}
+                          className={`w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 ${
+                            idxInList(c.id) === highlightedIdx && showDropdown
+                              ? (darkMode ? 'bg-blue-800 text-white' : 'bg-blue-600 text-white')
+                              : c.id === selectedCarId
+                                ? (darkMode ? 'bg-blue-900/50 text-blue-200' : 'bg-blue-100 text-blue-800')
+                                : (darkMode ? 'text-gray-100' : '')
+                          }`}
+                        >
+                          <span className="font-mono font-semibold">{c.display}</span>
+                          <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{c.car_type} · {c.carrier}</span>
+                        </button>
+                      ))}
+                      {plateQuery.trim() && !isValidPlateFormat(plateQuery) && (
+                        <div className={`px-3 py-1.5 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{plateFormatHint()}</div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!readOnly && (
+            <div>
+              <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Дата:</label>
+              <input
+                type="date"
+                value={date}
+                onChange={e => setDate(e.target.value)}
+                className={`border rounded px-2 py-1 text-sm w-36 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+              />
+            </div>
+          )}
+
+          {!readOnly && (
+            <>
+              <div>
+                <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Прибытие:</label>
+                <select
+                  value={arrival}
+                  onChange={e => setArrival(e.target.value)}
+                  className={`border rounded px-2 py-1 text-sm w-28 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+                >
+                  {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Убытие:</label>
+                <select
+                  value={departure}
+                  onChange={e => setDeparture(e.target.value)}
+                  className={`border rounded px-2 py-1 text-sm w-28 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+                >
+                  {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+            </>
+          )}
+
+          {!readOnly && (
+            <div className="flex items-center gap-1">
+              <input
+                type="checkbox"
+                checked={useCoefficient}
+                onChange={e => setUseCoefficient(e.target.checked)}
+                id="auto_coef"
+              />
+              <label htmlFor="auto_coef" className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Коэф.:</label>
+              <input
+                type="text"
+                value={coefficient}
+                onChange={e => setCoefficient(e.target.value)}
+                disabled={!useCoefficient}
+                className={`w-14 border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+              />
+            </div>
+          )}
+
+          {/* Фильтр по интервалу дат — доступен ВСЕГДА, в т.ч. в режиме «Только просмотр».
+              Разделитель слева рисуем только в режиме редактирования, чтобы в readOnly
+              не висела одинокая вертикальная черта. */}
+          <div className={`flex items-center gap-1 pl-2 ml-1 ${readOnly ? '' : 'border-l'}`}>
             <input
               type="checkbox"
               checked={dateRangeEnabled}
@@ -549,12 +565,14 @@ export default function AutoTab({ darkMode = false, readOnly = false }: Props) {
               className={`border rounded px-1 py-1 text-xs w-32 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
             />
           </div>
-          {carType && carrier && (
+
+          {!readOnly && carType && carrier && (
             <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
               Тариф: {getTariff(carType, carrier) !== null ? `${formatNumber(getTariff(carType, carrier)!)} ₽/ч` : '⚠️ Не найден'}
             </span>
           )}
-          {selectedIds.size > 0 && (
+
+          {!readOnly && selectedIds.size > 0 && (
             <button
               onClick={handleDeleteSelected}
               className="flex items-center gap-1 bg-red-600 text-white px-3 py-1.5 rounded text-sm hover:bg-red-700"
@@ -562,15 +580,17 @@ export default function AutoTab({ darkMode = false, readOnly = false }: Props) {
               <Trash2 size={14} /> Удалить ({selectedIds.size})
             </button>
           )}
-          <button
-            onClick={handleSave}
-            className="ml-auto flex items-center gap-1 bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700"
-          >
-            <Plus size={14} /> Добавить
-          </button>
+
+          {!readOnly && (
+            <button
+              onClick={handleSave}
+              className="ml-auto flex items-center gap-1 bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700"
+            >
+              <Plus size={14} /> Добавить
+            </button>
+          )}
         </div>
       </div>
-      )}
 
       {/* Контейнер: поиск + таблица + итоги (занимает всё оставшееся место) */}
       <div className={`flex flex-col flex-1 min-h-0 rounded-lg overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white border border-gray-200'}`}>
