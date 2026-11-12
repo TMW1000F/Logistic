@@ -1,7 +1,7 @@
 import { Fragment, useState, useMemo } from 'react';
 import { useStore } from '../store';
 import { useToast } from './Toast';
-import { calcDurationHours, calcAutoCost, calcServiceHours, calcServiceCost, formatNumber, formatDate } from '../types';
+import { calcDurationHours, calcAutoCost, calcServiceHours, calcServiceCost, formatNumber, formatDate, paymentTypeUnit } from '../types';
 import * as XLSX from 'xlsx';
 
 interface Props {
@@ -123,16 +123,26 @@ export default function ResultsTab({ darkMode = false, readOnly = false }: Props
     let records = state.serviceRecords.filter(r => r.date >= startDate && r.date <= endDate);
     if (selectedCarrier) records = records.filter(r => r.carrier === selectedCarrier);
 
-    const stats: Record<string, { orders: number; units: number; hours: number; cost: number }> = {};
+    const stats: Record<string, { orders: number; units: number; hours: number; cost: number; byUnit: Record<string, number> }> = {};
     for (const r of records) {
-      if (!stats[r.service_type]) stats[r.service_type] = { orders: 0, units: 0, hours: 0, cost: 0 };
+      if (!stats[r.service_type]) stats[r.service_type] = { orders: 0, units: 0, hours: 0, cost: 0, byUnit: {} };
       stats[r.service_type].orders++;
-      stats[r.service_type].units += r.quantity;
+      // Единицы измерения не смешиваем: для почасовых — часы, для остальных — ед./м³/т
+      if (r.payment_type !== 'hourly') {
+        const u = paymentTypeUnit(r.payment_type);
+        stats[r.service_type].byUnit[u] = (stats[r.service_type].byUnit[u] || 0) + r.quantity;
+      }
       stats[r.service_type].cost += calcServiceCost(r);
       if (r.payment_type === 'hourly') stats[r.service_type].hours += calcServiceHours(r);
     }
 
-    return Object.entries(stats).map(([type, data]) => ({ type, ...data })).sort((a, b) => a.type.localeCompare(b.type));
+    return Object.entries(stats).map(([type, data]) => ({
+      type,
+      orders: data.orders,
+      hours: data.hours,
+      cost: data.cost,
+      unitsStr: Object.entries(data.byUnit).map(([u, v]) => `${v.toLocaleString('ru-RU', { maximumFractionDigits: 2 })} ${u}`).join(', ') || '-',
+    })).sort((a, b) => a.type.localeCompare(b.type));
   }, [state, startDate, endDate, selectedCarrier]);
 
   // Экспорт в Excel (новый формат)
@@ -186,8 +196,8 @@ export default function ResultsTab({ darkMode = false, readOnly = false }: Props
     
     // Статистика по типам услуг
     const serviceStatsHeader = ['Статистика по типам услуг'];
-    const serviceStatsColumns = ['Тип услуги', 'Кол-во заказов', 'Единиц', 'Часы', 'Стоимость'];
-    const serviceStatsData = serviceTypeStats.map(s => [s.type, s.orders, s.units, s.hours, s.cost]);
+    const serviceStatsColumns = ['Тип услуги', 'Кол-во заказов', 'Объём / количество', 'Часы', 'Стоимость'];
+    const serviceStatsData = serviceTypeStats.map(s => [s.type, s.orders, s.unitsStr, s.hours, s.cost]);
     
     // Объединяем все данные
     const allData = [headers, ...data, emptyRow, totalRow, emptyRow, serviceStatsHeader, serviceStatsColumns, ...serviceStatsData];
@@ -258,7 +268,7 @@ export default function ResultsTab({ darkMode = false, readOnly = false }: Props
                 <tr>
                   <th className={`px-3 py-2 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Тип услуги</th>
                   <th className={`px-3 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Кол-во заказов</th>
-                  <th className={`px-3 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Единиц</th>
+                  <th className={`px-3 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Объём / количество</th>
                   <th className={`px-3 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Часы</th>
                   <th className={`px-3 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Стоимость</th>
                 </tr>
@@ -268,7 +278,7 @@ export default function ResultsTab({ darkMode = false, readOnly = false }: Props
                   <tr key={idx} className={`border-t ${darkMode ? 'border-gray-700 hover:bg-gray-700' : 'hover:bg-gray-50'}`}>
                     <td className="px-3 py-1.5">{s.type}</td>
                     <td className="px-3 py-1.5 text-right">{s.orders}</td>
-                    <td className="px-3 py-1.5 text-right">{formatNumber(s.units)}</td>
+                    <td className="px-3 py-1.5 text-right">{s.unitsStr}</td>
                     <td className="px-3 py-1.5 text-right">{formatNumber(s.hours)}</td>
                     <td className="px-3 py-1.5 text-right font-medium">{formatNumber(s.cost)}</td>
                   </tr>

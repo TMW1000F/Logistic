@@ -9,7 +9,7 @@ import TariffsTab from './components/TariffsTab';
 import CarsTab from './components/CarsTab';
 import StatsTab from './components/StatsTab';
 import { Car, Wrench, BarChart3, DollarSign, TrendingUp, HelpCircle, Save, FolderOpen, FilePlus, Sun, Moon, LogOut, Eye, Lock, Database } from 'lucide-react';
-import { calcDurationHours, calcAutoCost, calcServiceHours, calcServiceCost, formatDate, parseDateToISO, generateId } from './types';
+import { calcDurationHours, calcAutoCost, calcServiceHours, calcServiceCost, formatDate, parseDateToISO, generateId, paymentTypeLabel, PaymentType } from './types';
 import { 
   getCurrentUser, 
   logout, 
@@ -338,7 +338,7 @@ function AppContent() {
         record.service_type,
         record.carrier,
         record.quantity.toString(),
-        record.payment_type === 'hourly' ? 'Почасовая' : 'Фиксированная',
+        paymentTypeLabel(record.payment_type),
         time,
         hours.toFixed(2),
         cost.toFixed(2),
@@ -432,12 +432,15 @@ function AppContent() {
               coefficient
             });
           } else if (type === 'service') {
-            const paymentType = cols[5] === 'Почасовая' ? 'hourly' : 'fixed';
+            const paymentType: PaymentType =
+              cols[5] === 'Почасовая' ? 'hourly' :
+              cols[5] === 'По объёму' ? 'volume' :
+              cols[5] === 'По массе' ? 'mass' : 'fixed';
             serviceRecords.push({
               id: generateId(),
               service_type: cols[2],
               carrier: cols[3],
-              quantity: parseInt(cols[4]) || 1,
+              quantity: parseFloat(cols[4].replace(',', '.')) || 1,
               payment_type: paymentType,
               arrival: paymentType === 'hourly' ? arrival : null,
               departure: paymentType === 'hourly' ? departure : null,

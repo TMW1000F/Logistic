@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect, type KeyboardEvent } from 'react';
 import { useStore } from '../store';
 import { useToast } from './Toast';
-import { ServiceRecord, calcServiceHours, calcServiceCost, formatNumber, formatDate, generateId } from '../types';
+import { ServiceRecord, PaymentType, calcServiceHours, calcServiceCost, formatNumber, formatDate, generateId, paymentTypeLabel, paymentTypeUnit, PAYMENT_TYPE_SHORT_LABELS } from '../types';
 import { Plus, Trash2, CheckSquare, Square } from 'lucide-react';
 import SearchAndTags, { FilterTag } from './SearchAndTags';
 import { playClick } from '../sound';
@@ -26,7 +26,7 @@ export default function ServicesTab({ darkMode = false, readOnly = false }: Prop
   const [serviceType, setServiceType] = useState('');
   const [carrierInput, setCarrierInput] = useState('');
   const [quantity, setQuantity] = useState(1);
-  const [paymentType, setPaymentType] = useState<'hourly' | 'fixed'>('hourly');
+  const [paymentType, setPaymentType] = useState<PaymentType>('hourly');
   const [arrival, setArrival] = useState('08:00');
   const [departure, setDeparture] = useState('16:00');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -76,6 +76,9 @@ export default function ServicesTab({ darkMode = false, readOnly = false }: Prop
     const t = state.tariffs.find(tar => tar.type === 'service' && tar.category === type && tar.carrier === carr);
     return t ? { price: t.price, payment_type: t.payment_type } : null;
   };
+
+  // Для объёма (м³) и массы (т) количество может быть дробным
+  const isFractionalQty = paymentType === 'volume' || paymentType === 'mass';
 
   // Фильтрация записей
   const filteredRecords = useMemo(() => {
@@ -216,7 +219,7 @@ export default function ServicesTab({ darkMode = false, readOnly = false }: Prop
     }
 
     if (tariffInfo.payment_type !== paymentType) {
-      toast.error(`Для этого тарифа ожидается ${tariffInfo.payment_type === 'hourly' ? 'почасовая' : 'фиксированная'} оплата`);
+      toast.error(`Для этого тарифа ожидается ${paymentTypeLabel(tariffInfo.payment_type).toLowerCase()} оплата`);
       return;
     }
 
@@ -332,7 +335,7 @@ export default function ServicesTab({ darkMode = false, readOnly = false }: Prop
           </div>
           <div>
             <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Количество:</label>
-            <input type="number" min={1} max={1000} value={quantity} onChange={e => setQuantity(parseInt(e.target.value) || 1)} className={`w-full border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
+            <input type="number" min={isFractionalQty ? 0.01 : 1} max={1000} step={isFractionalQty ? 0.01 : 1} value={quantity} onChange={e => setQuantity(isFractionalQty ? (parseFloat(e.target.value) || 0) : (parseInt(e.target.value) || 1))} className={`w-full border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
           </div>
           <div>
             <label className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Дата:</label>
@@ -349,6 +352,12 @@ export default function ServicesTab({ darkMode = false, readOnly = false }: Prop
             </label>
             <label className="flex items-center gap-1 text-xs">
               <input type="radio" checked={paymentType === 'fixed'} onChange={() => setPaymentType('fixed')} /> Фикс.
+            </label>
+            <label className="flex items-center gap-1 text-xs">
+              <input type="radio" checked={paymentType === 'volume'} onChange={() => setPaymentType('volume')} /> {PAYMENT_TYPE_SHORT_LABELS.volume}
+            </label>
+            <label className="flex items-center gap-1 text-xs">
+              <input type="radio" checked={paymentType === 'mass'} onChange={() => setPaymentType('mass')} /> {PAYMENT_TYPE_SHORT_LABELS.mass}
             </label>
           </div>
           {paymentType === 'hourly' && (
@@ -381,7 +390,7 @@ export default function ServicesTab({ darkMode = false, readOnly = false }: Prop
           </div>
           {serviceType && carrierInput && (
             <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-              {getTariff(serviceType, carrierInput) ? `Тариф: ${formatNumber(getTariff(serviceType, carrierInput)!.price)} ₽/${paymentType === 'hourly' ? 'час' : 'ед.'}` : '⚠️ Не найден'}
+              {getTariff(serviceType, carrierInput) ? `Тариф: ${formatNumber(getTariff(serviceType, carrierInput)!.price)} ₽/${paymentTypeUnit(paymentType)}` : '⚠️ Не найден'}
             </span>
           )}
           {selectedIds.size > 0 && (
@@ -462,7 +471,7 @@ export default function ServicesTab({ darkMode = false, readOnly = false }: Prop
                   <td className={`px-2 py-1.5 cursor-pointer ${darkMode ? 'hover:bg-green-800' : 'hover:bg-green-100'} hover:underline`} onClick={() => !row.is_group && addFilterTag('service_type', row.service_type)} title="Клик — добавить фильтр">{row.service_type}</td>
                   <td className={`px-2 py-1.5 cursor-pointer ${darkMode ? 'hover:bg-green-800' : 'hover:bg-green-100'} hover:underline`} onClick={() => !row.is_group && addFilterTag('carrier', row.carrier)} title="Клик — добавить фильтр">{row.carrier}</td>
                   <td className="px-2 py-1.5 text-center">{row.is_group ? formatNumber(row.quantity) : row.quantity}</td>
-                  <td className="px-2 py-1.5 text-center">{row.payment_type === 'hourly' ? 'Почасовая' : row.payment_type === 'fixed' ? 'Фиксированная' : '-'}</td>
+                  <td className="px-2 py-1.5 text-center">{row.payment_type ? paymentTypeLabel(row.payment_type) : '-'}</td>
                   <td className="px-2 py-1.5 text-center">{row.time}</td>
                   <td className="px-2 py-1.5 text-right">{row.hours > 0 ? formatNumber(row.hours) : '-'}</td>
                   <td className="px-2 py-1.5 text-right font-medium">{formatNumber(row.cost)}</td>
