@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useStore } from '../store';
-import { calcDurationHours, calcAutoCost, calcServiceHours, calcServiceCost, formatNumber } from '../types';
+import { calcDurationHours, calcAutoCost, calcServiceHours, calcServiceCost, formatNumber, paymentTypeUnit } from '../types';
 
 interface Props {
   darkMode?: boolean;
@@ -82,15 +82,27 @@ export default function StatsTab({ darkMode = false, readOnly = false }: Props) 
 
   // Статистика по типам услуг
   const serviceStats = useMemo(() => {
-    const grouped: Record<string, { count: number; totalQuantity: number; totalHours: number; totalCost: number }> = {};
+    const grouped: Record<string, {
+      count: number; totalQuantity: number; totalHours: number; totalCost: number;
+      units: Record<string, number>; // количество в разрезе единиц измерения (ед./м³/т)
+    }> = {};
     for (const r of filteredServices) {
-      if (!grouped[r.service_type]) grouped[r.service_type] = { count: 0, totalQuantity: 0, totalHours: 0, totalCost: 0 };
+      if (!grouped[r.service_type]) grouped[r.service_type] = { count: 0, totalQuantity: 0, totalHours: 0, totalCost: 0, units: {} };
       grouped[r.service_type].count++;
-      grouped[r.service_type].totalQuantity += r.quantity;
+      // Суммируем только совместимые единицы: часы не складываем с м³ и тоннами
+      const unit = paymentTypeUnit(r.payment_type);
+      if (r.payment_type !== 'hourly') {
+        grouped[r.service_type].units[unit] = (grouped[r.service_type].units[unit] || 0) + r.quantity;
+      }
       grouped[r.service_type].totalCost += calcServiceCost(r);
       if (r.payment_type === 'hourly') grouped[r.service_type].totalHours += calcServiceHours(r);
     }
-    return Object.entries(grouped).map(([type, data]) => ({ type, ...data })).sort((a, b) => a.type.localeCompare(b.type));
+    return Object.entries(grouped).map(([type, data]) => {
+      const quantityStr = Object.entries(data.units)
+        .map(([u, v]) => `${formatNumber(v)} ${u}`)
+        .join(', ') || '-';
+      return { type, count: data.count, totalHours: data.totalHours, totalCost: data.totalCost, quantityStr };
+    }).sort((a, b) => a.type.localeCompare(b.type));
   }, [filteredServices]);
 
   return (
@@ -172,7 +184,7 @@ export default function StatsTab({ darkMode = false, readOnly = false }: Props) 
               <tr>
                 <th className={`px-3 py-2 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Тип услуги</th>
                 <th className={`px-3 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Кол-во заказов</th>
-                <th className={`px-3 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Всего единиц</th>
+                <th className={`px-3 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Объём / количество</th>
                 <th className={`px-3 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Всего часов</th>
                 <th className={`px-3 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Общая стоимость</th>
               </tr>
@@ -182,7 +194,7 @@ export default function StatsTab({ darkMode = false, readOnly = false }: Props) 
                 <tr key={idx} className={`border-t ${darkMode ? 'border-gray-700 hover:bg-gray-700' : 'hover:bg-gray-50'}`}>
                   <td className="px-3 py-1.5">{s.type}</td>
                   <td className="px-3 py-1.5 text-right">{s.count}</td>
-                  <td className="px-3 py-1.5 text-right">{formatNumber(s.totalQuantity)}</td>
+                  <td className="px-3 py-1.5 text-right">{s.quantityStr}</td>
                   <td className="px-3 py-1.5 text-right">{formatNumber(s.totalHours)}</td>
                   <td className="px-3 py-1.5 text-right font-medium">{formatNumber(s.totalCost)}</td>
                 </tr>

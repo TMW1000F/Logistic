@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useStore } from '../store';
 import { useToast } from './Toast';
-import { Tariff, formatNumber, generateId } from '../types';
+import { Tariff, PaymentType, formatNumber, generateId, paymentTypeLabel, paymentTypeUnit } from '../types';
 import { Save, Edit, Trash2, Download, Upload } from 'lucide-react';
 
 interface Props {
@@ -17,7 +17,7 @@ export default function TariffsTab({ darkMode = false, readOnly = false }: Props
   const [category, setCategory] = useState('');
   const [carrier, setCarrier] = useState('');
   const [price, setPrice] = useState('');
-  const [paymentType, setPaymentType] = useState<'hourly' | 'fixed'>('hourly');
+  const [paymentType, setPaymentType] = useState<PaymentType>('hourly');
   const [editingId, setEditingId] = useState<string | null>(null);
 
   // Фильтрация тарифов
@@ -208,7 +208,7 @@ export default function TariffsTab({ darkMode = false, readOnly = false }: Props
               />
             </div>
             <div>
-              <label className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Цена (₽):</label>
+              <label className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Цена (₽/{tariffType === 'service' ? paymentTypeUnit(paymentType) : 'час'}):</label>
               <input
                 type="text"
                 value={price}
@@ -224,11 +224,13 @@ export default function TariffsTab({ darkMode = false, readOnly = false }: Props
                 <label className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Тип оплаты:</label>
                 <select
                   value={paymentType}
-                  onChange={e => setPaymentType(e.target.value as 'hourly' | 'fixed')}
+                  onChange={e => setPaymentType(e.target.value as PaymentType)}
                   className={`w-full border rounded px-3 py-1.5 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
                 >
-                  <option value="hourly">Почасовая</option>
-                  <option value="fixed">Фиксированная</option>
+                  <option value="hourly">Почасовая (₽/час)</option>
+                  <option value="fixed">Фиксированная (₽/ед.)</option>
+                  <option value="volume">По объёму (₽/м³)</option>
+                  <option value="mass">По массе (₽/т)</option>
                 </select>
               </div>
             )}
@@ -295,7 +297,7 @@ export default function TariffsTab({ darkMode = false, readOnly = false }: Props
                     <td className="px-2 py-1.5 text-right font-medium">{formatNumber(tariff.price)}</td>
                     {tariffType === 'service' && (
                       <td className="px-2 py-1.5 text-center text-xs">
-                        {tariff.payment_type === 'hourly' ? 'Почасовая' : 'Фиксированная'}
+                        {paymentTypeLabel(tariff.payment_type)}
                       </td>
                     )}
                     {!readOnly && (

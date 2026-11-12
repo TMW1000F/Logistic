@@ -58,12 +58,46 @@ export function plateFormatHint(): string {
   return 'Формат номера: А 123 АА 123 или 1234 АА 123';
 }
 
+export type PaymentType = 'hourly' | 'fixed' | 'volume' | 'mass';
+
+// Человекочитаемые названия типов оплаты
+export const PAYMENT_TYPE_LABELS: Record<PaymentType, string> = {
+  hourly: 'Почасовая',
+  fixed: 'Фиксированная',
+  volume: 'По объёму',
+  mass: 'По массе',
+};
+
+// Единица измерения количества для каждого типа оплаты
+export const PAYMENT_TYPE_UNITS: Record<PaymentType, string> = {
+  hourly: 'час',
+  fixed: 'ед.',
+  volume: 'м³',
+  mass: 'т',
+};
+
+// Краткие названия для радиокнопок формы
+export const PAYMENT_TYPE_SHORT_LABELS: Record<PaymentType, string> = {
+  hourly: 'Почасовая',
+  fixed: 'Фикс.',
+  volume: 'По объёму (м³)',
+  mass: 'По массе (т)',
+};
+
+export function paymentTypeLabel(pt: string): string {
+  return PAYMENT_TYPE_LABELS[pt as PaymentType] ?? pt;
+}
+
+export function paymentTypeUnit(pt: string): string {
+  return PAYMENT_TYPE_UNITS[pt as PaymentType] ?? 'ед.';
+}
+
 export interface ServiceRecord {
   id: string;
   service_type: string;
   carrier: string;
   quantity: number;
-  payment_type: 'hourly' | 'fixed';
+  payment_type: PaymentType;
   arrival: string | null; // HH:MM
   departure: string | null; // HH:MM
   date: string; // YYYY-MM-DD
@@ -77,7 +111,7 @@ export interface Tariff {
   category: string;
   carrier: string;
   price: number;
-  payment_type: 'hourly' | 'fixed';
+  payment_type: PaymentType;
 }
 
 export interface AppState {
@@ -116,6 +150,7 @@ export function calcServiceCost(record: ServiceRecord): number {
     const hours = calcServiceHours(record);
     return Math.round(hours * record.tariff * record.quantity * record.coefficient * 100) / 100;
   } else {
+    // fixed / volume (м³) / mass (т): тариф × количество × коэффициент
     return Math.round(record.tariff * record.quantity * record.coefficient * 100) / 100;
   }
 }

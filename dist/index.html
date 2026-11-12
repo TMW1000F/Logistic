@@ -2,6 +2,35 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      (function() {
+        if (window.CSS && CSS.supports('color', 'oklch(0% 0 0)')) return; // браузер современный — ничего не делаем
+
+        function swapLink(link) {
+          if (!link.href) return;
+          if (!/\.css(\?|$)/.test(link.href)) return;
+          if (link.href.includes('.legacy.')) return;
+          link.href = link.href.replace(/\.css(\?.*)?$/, '.legacy.css$1');
+        }
+
+        // 1. Если <link> уже есть (dev-режим, HMR, повторный запуск) — подменяем сразу
+        document.querySelectorAll('link[rel="stylesheet"]').forEach(swapLink);
+
+        // 2. Ловим появление новых <link> в <head> и подменяем ДО загрузки
+        var observer = new MutationObserver(function(mutations) {
+          for (var i = 0; i < mutations.length; i++) {
+            var nodes = mutations[i].addedNodes;
+            for (var j = 0; j < nodes.length; j++) {
+              var node = nodes[j];
+              if (node.nodeType === 1 && node.tagName === 'LINK' && node.rel === 'stylesheet') {
+                swapLink(node);
+              }
+            }
+          }
+        });
+        observer.observe(document.head || document.documentElement, { childList: true, subtree: true });
+      })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Учёт автомобилей — АО 'Логистик-Центр'</title>
     <style>
@@ -43,7 +72,8 @@
             }
           });
         } else {
-          applyThemeToDOM("light");
+          var supportsOklch = window.CSS && CSS.supports && CSS.supports('color', 'oklch(0% 0 0)');
+          applyThemeToDOM(supportsOklch ? "light" : "dark");
         }
       })();
     </script>
@@ -79,8 +109,8 @@
         });
       })();
     </script>
-    <script type="module" crossorigin src="/assets/index-BwLZHBVy.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-y_pLQjbD.css">
+    <script type="module" crossorigin src="/assets/index-5PZ8Pkj7.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-l87Jv4wu.css">
   </head>
   <body>
     <div id="root"></div>
