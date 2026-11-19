@@ -69,6 +69,7 @@ export interface ServiceRecord {
   date: string; // YYYY-MM-DD
   tariff: number;
   coefficient: number;
+  comment?: string; // Комментарий (виден только в таблице, никуда не выгружается)
 }
 
 export interface Tariff {

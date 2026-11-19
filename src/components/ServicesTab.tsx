@@ -32,6 +32,7 @@ export default function ServicesTab({ darkMode = false, readOnly = false }: Prop
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [useCoefficient, setUseCoefficient] = useState(false);
   const [coefficient, setCoefficient] = useState('1.5');
+  const [comment, setComment] = useState('');
 
   // Поиск и теги
   const [searchQuery, setSearchQuery] = useState('');
@@ -156,6 +157,7 @@ export default function ServicesTab({ darkMode = false, readOnly = false }: Prop
         tariff: r.tariff,
         date: r.date,
         coefficient: r.coefficient,
+        comment: r.comment,
         has_high_tariff: r.coefficient !== 1.0,
         id: r.id,
         is_group: false,
@@ -186,6 +188,7 @@ export default function ServicesTab({ darkMode = false, readOnly = false }: Prop
       tariff: 0,
       date: '',
       coefficient: 1,
+      comment: undefined as string | undefined,
       has_high_tariff: false,
       id: key,
       is_group: true,
@@ -242,6 +245,7 @@ export default function ServicesTab({ darkMode = false, readOnly = false }: Prop
       date,
       tariff: tariffInfo.price,
       coefficient: coef,
+      comment: comment.trim() || undefined,
     };
 
     dispatch({ type: 'ADD_SERVICE_RECORD', payload: record });
@@ -256,6 +260,7 @@ export default function ServicesTab({ darkMode = false, readOnly = false }: Prop
     //setDate(new Date().toISOString().split('T')[0]);  //Оставляем дату установленную пользователем
     setCoefficient('1.5');
     setUseCoefficient(false);
+    setComment('');
     toast.success(`Услуга "${serviceType}" добавлена`);
   };
 
@@ -372,6 +377,18 @@ export default function ServicesTab({ darkMode = false, readOnly = false }: Prop
             <label htmlFor="svc_coef" className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Коэф.:</label>
             <input type="text" value={coefficient} onChange={e => setCoefficient(e.target.value)} disabled={!useCoefficient} className={`w-14 border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`} />
           </div>
+          <div className="flex items-center gap-1 flex-1 min-w-[180px]">
+            <label htmlFor="svc_comment" className={`text-xs whitespace-nowrap ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Комментарий:</label>
+            <input
+              id="svc_comment"
+              type="text"
+              value={comment}
+              onChange={e => setComment(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Введите комментарий..."
+              className={`flex-1 border rounded px-2 py-1 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+            />
+          </div>
           <div className="flex items-center gap-1 border-l pl-2 ml-1">
             <input type="checkbox" checked={dateRangeEnabled} onChange={e => setDateRangeEnabled(e.target.checked)} id="svc_date_range" />
             <label htmlFor="svc_date_range" className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Интервал:</label>
@@ -440,6 +457,7 @@ export default function ServicesTab({ darkMode = false, readOnly = false }: Prop
                 <th className={`px-2 py-2 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Тариф</th>
                 <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Дата</th>
                 <th className={`px-2 py-2 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Коэф.</th>
+                <th className={`px-2 py-2 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Комментарий</th>
                 {/* Колонка действий: в режиме только чтения скрываем кнопки, но саму
                     колонку оставляем (пустым <th/>), чтобы ячейки tbody не съезжали
                     влево относительно заголовков. */}
@@ -471,6 +489,7 @@ export default function ServicesTab({ darkMode = false, readOnly = false }: Prop
                     {row.date ? formatDate(row.date) : (row.is_group ? `${(row as any).group_count} заказов` : '-')}
                   </td>
                   <td className="px-2 py-1.5 text-center">{row.has_high_tariff ? `×${row.coefficient}` : '-'}</td>
+                  <td className={`px-2 py-1.5 text-xs max-w-[200px] truncate ${darkMode ? 'text-gray-300' : 'text-gray-600'}`} title={row.comment || undefined}>{row.comment || '-'}</td>
                   <td className="px-2 py-1.5 text-center">
                     {!row.is_group && !readOnly && (
                       <button onClick={() => handleDelete(row.id)} className="text-red-500 hover:text-red-700">
@@ -482,7 +501,7 @@ export default function ServicesTab({ darkMode = false, readOnly = false }: Prop
               ))}
               {displayData.length === 0 && (
                 <tr>
-                  <td colSpan={12} className={`px-4 py-8 text-center ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Нет данных</td>
+                  <td colSpan={13} className={`px-4 py-8 text-center ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Нет данных</td>
                 </tr>
               )}
             </tbody>
